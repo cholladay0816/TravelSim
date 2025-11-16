@@ -128,6 +128,8 @@
   .nearbyTabs { display:flex; gap:6px; padding:6px 8px; align-items:center; }
   .nearbyTab { background:#15202a; color:var(--text); padding:6px 10px; border-radius:8px; cursor:pointer; font-size:.85rem; border:1px solid transparent; }
   .nearbyTab.selected { background:var(--accent); color:#000; border-color:rgba(0,0,0,0.12); }
+    .nearbyTab.outOfRange { opacity:0.55; position:relative; }
+    .nearbyTab.outOfRange::after { content:'↔'; position:absolute; top:2px; right:4px; font-size:.55rem; opacity:.7; }
   #vocabTooltip button { font-size:.6rem; padding:4px 8px; }
     a { color: var(--accent); }
     code { background:#161f27; padding:2px 4px; border-radius:4px; font-size:.8rem; }
@@ -424,11 +426,20 @@
 
     // Communication limit: if player is further than this from a POI, close its chat tab
     const COMM = { maxDistanceMeters: 300 };
-    // Distance after which we reset nearby conversation context to keep chats local
-    const CONTEXT_RESET_METERS = 60;
+    // Chat/session behavior tuning (auto-reset thresholds & tab retention)
+    // autoCloseDistanceFactor: multiplier of COMM.maxDistanceMeters beyond which we force-close a tab.
+    // contextReset: only auto-reset when player moves this far AND has been idle this long (ms) AND no active in-range selected POI.
+    const CHAT_BEHAVIOR = {
+      autoCloseDistanceFactor: 1, // retain tab until out of communication range
+      contextReset: { distanceMeters: 250, enabled: true }, // movement-based only
+      messageOverflowCount: 120 // reset context only after very long single-epoch thread
+    };
     let lastContextAnchor = L.latLng(CONFIG.origin.lat, CONFIG.origin.lon);
     let conversationEpoch = 0; // increments on context reset; older messages kept visually
       let gameStarted = false; // track if a session is active to add setup close button
+    // Context reset throttling & chat activity tracking to avoid spammy movement resets
+    let lastResetTs = 0; // ms timestamp of last nearby context reset
+    let lastChatActivityTs = Date.now(); // updated on any user/assistant message
     // Transient environment context for AI prompts (not stored in conversation threads)
     function buildEnvironmentContext(selectedPoiId=null){
       try{
@@ -452,7 +463,7 @@
 
     function resetNearbyContext(reason='movement'){
         // Only reset if at least one non-system message exists in any conversation
-        const hasNonSystem = ([...perPoiConversation.values(), npcConversation, interpreterConversation]).some(conv => conv && conv.some(m => (m.role||'').toLowerCase() !== 'system'));
+        const hasNonSystem = ([...perPoiConversation.values(), npcConversation]).some(conv => conv && conv.some(m => (m.role||'').toLowerCase() !== 'system'));
         if(!hasNonSystem){
           // Skip reset silently per requirement (no conversation yet besides system)
           return;
@@ -987,15 +998,31 @@ Return strictly the JSON array; no commentary.`;
     // Append a message to a thread (poiId=null -> general), store it, and render if that thread is active
     function addMessageToThread(role, text, poiId=null){
       const entry = { role, content: text, ts: Date.now(), epoch: conversationEpoch };
+      lastChatActivityTs = Date.now();
       if(poiId){
         const conv = perPoiConversation.get(poiId) || [];
         conv.push(entry); if(conv.length > 200) conv.splice(0, conv.length - 200);
         perPoiConversation.set(poiId, conv);
         if(nearbyTabState.selectedId == poiId) renderConversation(poiId);
+        // Overflow-based context compacting (no time-based resets): if current epoch messages exceed threshold
+        try {
+          const limit = CHAT_BEHAVIOR.messageOverflowCount || 0;
+          if(limit > 0){
+            const currentEpochCount = conv.filter(m => (m.epoch == null || m.epoch === conversationEpoch) && (m.role||'').toLowerCase() !== 'system').length;
+            if(currentEpochCount >= limit){ resetNearbyContext('overflow '+currentEpochCount+' msgs'); }
+          }
+        } catch(e){}
         return conv;
       } else {
         generalConversation.push(entry); if(generalConversation.length > 400) generalConversation.splice(0, generalConversation.length - 400);
         if(nearbyTabState.selectedId == null) renderConversation(null);
+        try {
+          const limit = CHAT_BEHAVIOR.messageOverflowCount || 0;
+          if(limit > 0){
+            const currentEpochCount = generalConversation.filter(m => (m.epoch == null || m.epoch === conversationEpoch) && (m.role||'').toLowerCase() !== 'system').length;
+            if(currentEpochCount >= limit){ resetNearbyContext('overflow '+currentEpochCount+' msgs'); }
+          }
+        } catch(e){}
         return generalConversation;
       }
     }
@@ -1357,22 +1384,31 @@ Return strictly the JSON array; no commentary.`;
   try{
     const selected = nearbyTabState.selectedId;
     if(selected){
+      const closeFactor = CHAT_BEHAVIOR.autoCloseDistanceFactor || 2;
       // Prefer the currentNearby array which already contains measured distances
       const near = currentNearby.find(p => p.id == selected || p._id == selected || p.name == selected || p.key == selected);
       if(near){
         const dist = near._distanceMeters || Math.round(playerLatLng.distanceTo(L.latLng(near.lat, near.lon)));
-        if(dist > COMM.maxDistanceMeters){
-          // Auto-close the POI tab so the player cannot remotely communicate
+        if(dist > COMM.maxDistanceMeters * closeFactor){
+          // Only force-close when far beyond communication range * factor
           nearbyTabState.selectedId = null;
           renderNearbyTabs();
           renderConversation(null);
+        } else {
+          // Retain tab even if just beyond normal range; annotate visually
+          if(dist > COMM.maxDistanceMeters){
+            const tabsEl = document.getElementById('nearbyTabs');
+            if(tabsEl){
+              tabsEl.querySelectorAll('.nearbyTab.selected').forEach(t => t.classList.add('outOfRange'));
+            }
+          }
         }
       } else {
-        // No currentNearby entry found: attempt a fallback distance check via dynamicPOIs
+        // Fallback distance check via dynamicPOIs only force-close at extended range
         const sel = dynamicPOIs.find(d => d.id == selected || d._id == selected || d.key == selected);
         if(sel){
           const dist = Math.round(playerLatLng.distanceTo(L.latLng(sel.lat, sel.lon)));
-          if(dist > COMM.maxDistanceMeters){
+          if(dist > COMM.maxDistanceMeters * closeFactor){
             nearbyTabState.selectedId = null; renderNearbyTabs(); renderConversation(null);
           }
         }
@@ -1539,7 +1575,13 @@ Return strictly the JSON array; no commentary.`;
       // Reset chat context if we've moved far from last anchor (start a new local session)
       try {
         const dist = lastContextAnchor.distanceTo(playerLatLng);
-        if(dist > CONTEXT_RESET_METERS){ resetNearbyContext('moved '+Math.round(dist)+'m'); }
+        try {
+          const cfg = CHAT_BEHAVIOR.contextReset;
+          if(cfg.enabled && dist > cfg.distanceMeters){
+            // Movement beyond threshold alone triggers reset (no time-based gating)
+            resetNearbyContext('moved '+Math.round(dist)+'m');
+          }
+        } catch(e){}
       } catch(e){}
       // Trigger OSM POI fetch when we've moved a decent distance from last query center
       try {
@@ -1860,17 +1902,22 @@ Return strictly the JSON array; no commentary.`;
         ];
         resp = sample(templates);
       }
-  // Add assistant reply using unified log() so it's recorded once in the visible log and the active thread
+  // Add assistant reply using unified log() so it's recorded once (avoid duplicate assistant entries)
   lastNPCSpanish = resp;
   log('NPC', resp);
-  pushLimited(conv, {role:'assistant', content: resp}); if(poiId) perPoiConversation.set(poiId, conv);
     checkNewWords(resp);
     // Detect outcomes (e.g., hotel check-in completed) from assistant reply and apply game effects (await verifier)
     try{ const poiObj = poiId ? dynamicPOIs.find(d => d.id == poiId) : null; await detectPOIOutcome(poiObj, resp); }catch(e){}
     }
 
     async function interpreterResponse(userMsg, poiId=null){
-  const systemPrompt = `You are an interpreter and tour guide helping a user learn ${LOCALE.targetLangName} and travel. Stay in character for the scenario. Respond primarily in ${LOCALE.baseLangName} with any example ${LOCALE.targetLangName} phrases clearly shown first. If user pastes ${LOCALE.targetLangName}, translate then explain one key grammar or vocab point. If user asks "How do I say/ask ..." or "How do I ask if ..." provide 1-2 natural ${LOCALE.targetLangName} sentence options (bold them) and then a brief explanation (max 2 sentences) in ${LOCALE.baseLangName}. Avoid generic acknowledgements; answer directly.`;
+  const systemPrompt = `You are an interpreter and travel-guide coach. Stay in character and be concise. Respond primarily in ${LOCALE.baseLangName}, but always show example ${LOCALE.targetLangName} phrases first.
+
+Formatting rules:
+- If the user asks "How do I say/ask <something>?" return exactly 1–2 natural ${LOCALE.targetLangName} sentence options (each on its own line and bolded) followed by a one- to two-sentence explanation in ${LOCALE.baseLangName}. No greetings or filler.
+- If the user pastes ${LOCALE.targetLangName}, first give a clear ${LOCALE.baseLangName} translation, then explain one key grammar or vocabulary point (one short paragraph).
+- For general requests, prioritize helpful example phrases followed by a brief explanation. If a noun/place is ambiguous, provide one natural translation and note an alternative in one short sentence.
+- Keep replies short and user-focused. Do not attempt hard-coded substitutions client-side.`;
       const conv = poiId ? (perPoiConversation.get(poiId) || []) : interpreterConversation;
       const last = conv[conv.length-1];
       if(!(last && (last.role||'').toString().toLowerCase() === 'you' && last.content === userMsg) && !(last && (last.role||'').toString().toLowerCase() === 'user' && last.content === userMsg)){
@@ -1891,65 +1938,31 @@ Return strictly the JSON array; no commentary.`;
         }
       })();
       }
-  // Pattern-based direct phrase handling to avoid generic model replies
-  const lowerMsg = (userMsg||'').toLowerCase();
-  const askPattern = /how\s+do\s+i\s+ask\s+if\s+this\s+(.+?)\s+has\s+an?\s+(.+)/i;
-  const sayPattern = /how\s+do\s+i\s+(say|ask)\s+(?:in\s+\w+\s+)?(?:if\s+)?(.+)/i;
-  const nounMap = {
-    'atm':'cajero automático','bathroom':'baño','restroom':'baño','wifi':'wifi','wi-fi':'wifi','ticket machine':'máquina expendedora de billetes','pharmacy':'farmacia','currency exchange':'cambio de moneda','bank':'banco','hotel':'hotel','metro ticket':'billete de metro','bus ticket':'billete de autobús'
-  };
-  function toSpanishThing(raw){
-    if(!raw) return raw;
-    const key = raw.trim().toLowerCase();
-    return nounMap[key] || raw.trim();
-  }
-  if(askPattern.test(lowerMsg)){
-    const m = askPattern.exec(lowerMsg);
-    const place = (m[1]||'').trim();
-    const thing = (m[2]||'').trim();
-    const thingEs = toSpanishThing(thing);
-    // Provide two phrasing options
-    const phrase1 = `¿Este ${place} tiene ${thingEs}?`;
-    const phrase2 = `¿Hay ${thingEs} en este ${place}?`;
-    const resp = `**${phrase1}** / **${phrase2}**\nUse "¿Este [lugar] tiene [cosa]?" for ownership; use "¿Hay [cosa] en ...?" to ask if one exists inside. '¿Hay' introduces existence. 'Tiene' is the third-person form of 'tener'.`;
+
+  // Minimal intent detector: capture "how do I say/ask ..." and forward to the model for phrasing
+  const howRegex = /^\s*how\s+do\s+i\s+(?:say|ask)\s*(?:if\s*)?(.*)\?*\s*$/i;
+  const m = howRegex.exec(userMsg || '');
+  if(m && m[1]){
+    const target = m[1].trim();
+    const envCtx = buildEnvironmentContext(poiId);
+    const userForAI = `User asked: "${target}". Provide 1-2 natural ${LOCALE.targetLangName} sentence options to express this (bold each option on its own line). Then give a concise (1-2 sentence) explanation in ${LOCALE.baseLangName}. No greetings.`;
+    const history = [{ role:'system', content: systemPrompt }, { role:'system', content: envCtx }, { role:'user', content: userForAI }, ...threadToApiMessages(conv)];
+    const ai = await callOpenAI(history);
+    const resp = ai || `**${target}**\n(Unable to generate phrasing.)`;
     log('Interpreter', resp);
-    pushLimited(conv, {role:'assistant', content: resp}); if(poiId) perPoiConversation.set(poiId, conv);
-    markObjectiveProgressByLearning();
-    try{ const poiObj = poiId ? dynamicPOIs.find(d => d.id == poiId) : null; await detectPOIOutcome(poiObj, resp); }catch(e){}
-    return;
-  } else if(/how\s+do\s+i\s+ask\s+if/i.test(lowerMsg) && /bbva/.test(lowerMsg) && /atm/.test(lowerMsg)){
-    const phrase1 = `¿Este banco tiene cajero automático?`;
-    const phrase2 = `¿Hay un cajero automático en este banco?`;
-    const resp = `**${phrase1}** / **${phrase2}**\nBoth forms are correct. 'cajero automático' means ATM. Use the second to ask about existence; the first about possession.`;
-    log('Interpreter', resp);
-    pushLimited(conv, {role:'assistant', content: resp}); if(poiId) perPoiConversation.set(poiId, conv);
-    markObjectiveProgressByLearning();
-    try{ const poiObj = poiId ? dynamicPOIs.find(d => d.id == poiId) : null; await detectPOIOutcome(poiObj, resp); }catch(e){}
-    return;
-  } else if(sayPattern.test(lowerMsg)){
-    const m = sayPattern.exec(lowerMsg);
-    const rest = (m[2]||'').trim();
-    // Provide guidance: translate key noun phrases via map
-    const parts = rest.split(/\s+/);
-    const translatedParts = parts.map(p => nounMap[p.toLowerCase()] ? nounMap[p.toLowerCase()] : p);
-    const guess = translatedParts.join(' ');
-    const phrase = `**${guess}?**`;
-    const resp = `${phrase}\nAttempted direct phrase. Replace any nouns as needed. Use rising intonation (question mark) or invert word order with a verb if required.`;
-    log('Interpreter', resp);
-    pushLimited(conv, {role:'assistant', content: resp}); if(poiId) perPoiConversation.set(poiId, conv);
     markObjectiveProgressByLearning();
     try{ const poiObj = poiId ? dynamicPOIs.find(d => d.id == poiId) : null; await detectPOIOutcome(poiObj, resp); }catch(e){}
     return;
   }
+
+  // Fallback: full interpreter behavior via the model
   const envCtx = buildEnvironmentContext(poiId);
   const history = [{role:'system', content: systemPrompt}, {role:'system', content: envCtx}, ...threadToApiMessages(conv)];
   const ai = await callOpenAI(history);
-      let resp = ai;
-    // Let log(...) add the assistant/interpreter reply to the active thread
-    log('Interpreter', resp);
-    markObjectiveProgressByLearning();
-    // Run objective detection for interpreter replies as well (await verifier)
-    try{ const poiObj = poiId ? dynamicPOIs.find(d => d.id == poiId) : null; await detectPOIOutcome(poiObj, resp); }catch(e){}
+  const resp = ai || '';
+  log('Interpreter', resp);
+  markObjectiveProgressByLearning();
+  try{ const poiObj = poiId ? dynamicPOIs.find(d => d.id == poiId) : null; await detectPOIOutcome(poiObj, resp); }catch(e){}
     }
 
     async function translateLast(){
