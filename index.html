@@ -3,13 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <title id="appTitle">TravelSim Madrid – Language Learning Map Game</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <!-- Leaflet CDN -->
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script
     src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Bootstrap 5 CDN -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
   <style>
     :root {
       --bg: #10141a;
@@ -21,30 +26,37 @@
       --danger: #d00000;
       --ok: #70e000;
       --warn: #ffb703;
-      font-size: 16px;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+      /* Fluid base font sizing: scales slightly on very large screens */
+      font-size: clamp(14px, 1.1vw + 12px, 17px);
     }
     html, body { height:100%; margin:0; padding:0; background: var(--bg); color: var(--text); font-family: system-ui, Segoe UI, Arial, sans-serif; }
+    body { padding-top: var(--safe-top); padding-bottom: var(--safe-bottom); padding-left: var(--safe-left); padding-right: var(--safe-right); }
     #map { position:absolute; top:0; left:0; right:0; bottom:0; z-index:1; }
   /* HUD container: allow clicks to pass through except where panels are present */
-  .hud { position:fixed; z-index:500; display:flex; gap:12px; top:8px; left:8px; flex-wrap:wrap; pointer-events: none; align-items:flex-start; }
-  /* Panels must be interactive (override container) */
-  .panel { background: var(--panel); padding:10px 14px; border-radius: var(--radius); box-shadow: 0 4px 14px -4px rgba(0,0,0,.6); backdrop-filter: blur(4px); pointer-events: auto; transition: max-height .22s ease, padding .18s ease, opacity .18s ease; min-width:200px; }
-  /* Make headers align nicely and remain visible when collapsed */
-  .panel h2, .panel h3 { margin:.2em 0 .4em; font-weight:600; font-size:1rem; letter-spacing:.5px; display:flex; align-items:center; gap:8px; }
-  /* Keep header text on one line and ellipsize if needed */
-  .panel h2, .panel h3 { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .collapseToggle { background: none; border:none; color: var(--accent); cursor:pointer; font-size:.9rem; padding:2px 6px; margin-right:4px; border-radius:4px; }
-  /* When collapsed, hide the panel body but keep header h2/h3 visible so user can re-open */
-  .panel.collapsed .panelBody { display:none; }
-  /* collapsed panels become thin headers to conserve space */
-  .panel.collapsed { padding:6px 10px; max-height:56px; min-width:160px; min-height:40px; overflow:hidden; }
-  .panel.collapsed h2, .panel.collapsed h3 { margin:0; }
-  .panel.collapsed .collapseToggle { transform:rotate(-90deg); }
+  .hud { position:fixed; z-index:500; top:8px; left:8px; right:8px; pointer-events:none; }
+  /* Bootstrap accordion wrapper adopts flex for desktop, stacks for mobile */
+  .hud .accordion { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-start; }
+  .accordion-item.panel { background: var(--panel); color: var(--text); border:1px solid #28313c; border-radius: var(--radius); overflow:hidden; flex:1 1 260px; pointer-events:auto; }
+  .accordion-button { background:#24313e; color:var(--text); font-size:.9rem; padding:.55rem .9rem; }
+  .accordion-button:not(.collapsed) { background:#15202a; color:var(--accent); box-shadow: inset 0 0 0 999px rgba(0,0,0,0.15); }
+  .accordion-button:focus { box-shadow:0 0 0 .15rem rgba(255,186,8,.35); }
+  .accordion-body.panelBody { padding:.75rem .9rem; font-size:.75rem; }
+  /* Remove default rounded corners that conflict with dark theme */
+  .accordion-item { border: none; }
+  .accordion-item + .accordion-item { margin-top:0; }
+  @media (max-width:760px){
+    .hud .accordion { flex-direction:column; }
+    .accordion-item.panel { flex:1 1 auto; }
+  }
     .flex { display:flex; }
     #objectives li { margin:0; padding:6px 4px 6px 0; line-height:1.25; border-bottom:1px solid #28313c; }
     #objectives li:last-child { border-bottom:none; }
     #objectives li.done { text-decoration: line-through; opacity:.55; }
-      #objectives { list-style: none; padding-left:0; margin:0; max-width:260px; }
+      #objectives { list-style: none; padding-left:0; margin:0; }
     /* Objectives panel: independent scroll so it doesn't force other panels to match height */
     #objectivesPanel .panelBody { max-height:260px; overflow:auto; position:relative; }
     #objectivesPanel .panelBody::-webkit-scrollbar { width:12px; }
@@ -53,7 +65,29 @@
     #objectivesPanel .panelBody::-webkit-scrollbar-thumb:hover { background:#78878f; }
     #objectivesPanel .panelBody { scrollbar-width: thin; scrollbar-color: #28313c rgba(255,255,255,0.02); }
     #dayBadge { font-size:.9rem; font-weight:600; background: var(--accent2); color:#fff; padding:4px 10px; border-radius:20px; display:inline-block; }
-  #chatPanel { position:fixed; bottom:8px; left:8px; right:8px; z-index:600; display:flex; flex-direction:column; gap:6px; max-width:860px; height:320px; }
+  /* Chat accordion container fixed at bottom */
+  /* Chat accordion: allow nearly full-width on desktop (remove fixed max-width) */
+  #chatAccordion { position:fixed; bottom:8px; left:8px; right:8px; z-index:650; max-width:none; }
+  /* Default desktop chat height reduced for less vertical footprint; mobile overrides still apply */
+  #chatPanel { display:flex; flex-direction:column; gap:6px; height:300px; }
+  /* Chat card refactor */
+  #chatPanel.chat-card { background: var(--panel); border:1px solid #28313c; border-radius: var(--radius); box-shadow:0 4px 14px -4px rgba(0,0,0,.6); overflow:hidden; }
+  #chatPanel .chat-header { padding:.4rem .6rem; background:#15202a; border-bottom:1px solid #28313c; }
+  #chatPanel .chat-header .nearbyTabs { flex:1 1 auto; }
+  #chatPanel .chat-body { flex:1 1 auto; overflow:auto; padding:.55rem .7rem; background:#0f141a; font-size:.85rem; }
+  #chatPanel .chat-footer { padding:.5rem .6rem; background:#15202a; border-top:1px solid #28313c; }
+  #chatPanel .chat-actions { display:flex; gap:4px; flex-wrap:wrap; margin-top:6px; }
+  #chatPanel .chat-actions .btn { padding:6px 10px; font-size:.85rem; line-height:1; display:flex; align-items:center; gap:8px; border:1px solid #28313c; background:#24313e; color:var(--text); height:40px; }
+  #chatPanel .chat-actions .btn:hover { background:#2e3c49; }
+  #chatPanel .chat-actions .btn:focus { box-shadow:0 0 0 2px rgba(255,186,8,.35); }
+  #npcBtn.btn { background:var(--accent); color:#000; font-weight:600; }
+  #npcBtn.btn:hover { filter:brightness(1.1); }
+  /* Baseline input sizing (kept for older rules but refined below) */
+  #msgInput { min-height:42px; }
+  /* Long-press tooltip for mobile */
+  .mobile-hint { position:fixed; z-index:2000; background:rgba(0,0,0,.85); color:#fff; padding:6px 10px; font-size:.65rem; border-radius:6px; max-width:180px; pointer-events:none; opacity:0; transform:translate(-50%, -8px) scale(.95); transition:.15s ease; box-shadow:0 4px 12px -3px rgba(0,0,0,.6); }
+  .mobile-hint.show { opacity:1; transform:translate(-50%, -8px) scale(1); }
+  /* Removed mobile Messages toggle; chat is always visible */
   /* Chat grab handle for resizing: larger hit area, visually centered and overlapping panel padding */
   #chatPanel .chatGrab {
     height:22px;
@@ -82,9 +116,14 @@
   #log { background:#0f141a; border:1px solid #28313c; min-height:80px; max-height:none; padding:10px; overflow:auto; font-size:.85rem; border-radius: var(--radius); flex:1 1 auto; }
     #log .entry { margin-bottom:6px; }
     #log .role { font-weight:600; margin-right:4px; }
-    #inputRow { display:flex; gap:6px; }
-    #msgInput { flex:1; padding:8px; border-radius: var(--radius); border:1px solid #28313c; background:#162029; color: var(--text); }
-    button { cursor:pointer; background: var(--accent); border:none; color:#000; font-weight:600; padding:8px 14px; border-radius: var(--radius); font-size:.8rem; letter-spacing:.5px; transition:.2s; }
+  /* Align input and buttons vertically and ensure consistent sizing */
+  #inputRow { display:flex; gap:6px; align-items:center; }
+  #msgInput { flex:1; padding:10px 12px; border-radius: var(--radius); border:1px solid #28313c; background:#162029; color: var(--text); height:44px; box-sizing:border-box; }
+  /* Placeholder color: readable on dark backgrounds (webkit, moz, standard) */
+  #msgInput::placeholder { color: rgba(230,237,243,0.38); }
+  #msgInput:-ms-input-placeholder { color: rgba(230,237,243,0.38); } /* IE 10+ */
+  #msgInput::-ms-input-placeholder { color: rgba(230,237,243,0.38); } /* Edge */
+  button { cursor:pointer; background: var(--accent); border:none; color:#000; font-weight:600; padding:8px 14px; border-radius: var(--radius); font-size:.8rem; letter-spacing:.5px; transition:.2s; min-height:36px; }
     button.secondary { background:#293542; color: var(--text); }
     button:disabled { opacity:.4; cursor:default; }
     button:hover:not(:disabled) { filter:brightness(1.15); }
@@ -121,12 +160,17 @@
   #vocabPanel button.small { padding:2px 6px; font-size:.6rem; }
   #exportRow { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
   .vocab-word { cursor:pointer; }
-  .vocab-new { background:#28313c; padding:2px 4px; border-radius:4px; color:#ffba08; }
+  /* New vocab highlight: yellow background for high visibility */
+  .vocab-word.vocab-new { background: var(--accent); padding:2px 4px; border-radius:4px; color:#000; font-weight:600; }
+  /* Ensure chat log text is white for readability */
+  #log.chat-body, #log .entry { color: var(--text); }
+  #log .role { color: var(--accent); }
   #vocabTooltip { position:absolute; background:#1d252e; border:1px solid #28313c; padding:8px 10px; border-radius:8px; font-size:.7rem; z-index:1200; display:none; width:200px; box-shadow:0 4px 12px -3px rgba(0,0,0,.6); }
   #vocabTooltip h4 { margin:0 0 6px; font-size:.75rem; }
   /* Nearby tabs above the chat log */
-  .nearbyTabs { display:flex; gap:6px; padding:6px 8px; align-items:center; }
-  .nearbyTab { background:#15202a; color:var(--text); padding:6px 10px; border-radius:8px; cursor:pointer; font-size:.85rem; border:1px solid transparent; }
+  .nearbyTabs { display:flex; gap:6px; padding:6px 8px; align-items:center; overflow-x:auto; scrollbar-width: none; -ms-overflow-style: none; }
+  .nearbyTabs::-webkit-scrollbar { display:none; }
+  .nearbyTab { background:#15202a; color:var(--text); padding:6px 10px; border-radius:8px; cursor:pointer; font-size:.85rem; border:1px solid transparent; flex:0 0 auto; }
   .nearbyTab.selected { background:var(--accent); color:#000; border-color:rgba(0,0,0,0.12); }
     .nearbyTab.outOfRange { opacity:0.55; position:relative; }
     .nearbyTab.outOfRange::after { content:'↔'; position:absolute; top:2px; right:4px; font-size:.55rem; opacity:.7; }
@@ -160,10 +204,22 @@
       box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12);
     }
     /* Mobile adjustments */
-    @media (max-width:700px){
-      .hud { flex-direction:column; }
-      #chatPanel { left:4px; right:4px; }
-      button { padding:8px 10px; }
+    /* Enhanced responsive rules */
+    @media (max-width:1000px){
+      .hud .accordion { justify-content:space-between; }
+    }
+    @media (max-width:760px){
+      /* Chat panel adaptive height with accordion above */
+      #chatPanel { left:4px; right:4px; max-width:100%; height:42vh; max-height:55vh; bottom:calc(8px + var(--safe-bottom)); }
+      #inputRow { flex-wrap:wrap; }
+      #inputRow > * { flex:1 1 100%; }
+      #inputRow button { min-height:42px; }
+      body.overlay-open #chatPanel { display:none; }
+    }
+    @media (max-width:480px){
+      #chatPanel { height:46vh; }
+      .nearbyTab { padding:6px 8px; font-size:.8rem; }
+      .panel h2, .panel h3 { font-size:.9rem; }
     }
   </style>
   <!-- Inline README / Instructions -->
@@ -197,38 +253,62 @@
 <body>
   <div id="map"></div>
   <div class="hud">
-    <div class="panel" id="statusPanel">
-  <h2><button class="collapseToggle" data-panel="statusPanel" title="Collapse/Expand">▾</button> TravelSim <span class="localeCity">Madrid</span></h2>
-      <div class="panelBody">
-  <div style="font-size:.75rem; opacity:.8;">Target Language: <strong id="targetLangLabel">Spanish (es)</strong> | Base: <span id="baseLangLabel">English (en)</span></div>
-        <div id="playerPos" style="margin-top:4px; font-size:.7rem; opacity:.7;">Pos: …</div>
-        <div id="nearby" style="font-size:.7rem; margin-top:4px;">Nearby: none</div>
-        <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
-          <button id="startConfigBtn" class="secondary" title="Re-open setup">Setup</button>
-          <button id="centerBtn" class="secondary">Center Map</button>
-          <button id="resetBtn" class="secondary">Reset</button>
-          <button id="cancelRouteBtn" class="secondary" title="Cancel active route">Cancel Route</button>
+    <div class="accordion" id="mainAccordion">
+      <!-- Status Panel -->
+      <div class="accordion-item panel" id="statusPanel">
+        <h2 class="accordion-header" id="headingStatus">
+          <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#statusPanelBody" aria-expanded="true" aria-controls="statusPanelBody">
+            TravelSim <span class="localeCity">Madrid</span>
+          </button>
+        </h2>
+        <div id="statusPanelBody" class="accordion-collapse collapse show" data-bs-parent="#mainAccordion">
+          <div class="accordion-body panelBody">
+            <div style="font-size:.75rem; opacity:.8;">Target Language: <strong id="targetLangLabel">Spanish (es)</strong> | Base: <span id="baseLangLabel">English (en)</span></div>
+            <div id="playerPos" style="margin-top:4px; font-size:.7rem; opacity:.7;">Pos: …</div>
+            <div id="nearby" style="font-size:.7rem; margin-top:4px;">Nearby: none</div>
+            <div class="d-flex flex-wrap gap-2 mt-2">
+              <button id="startConfigBtn" class="secondary btn btn-sm" title="Re-open setup">Setup</button>
+              <button id="centerBtn" class="secondary btn btn-sm">Center Map</button>
+              <button id="resetBtn" class="secondary btn btn-sm">Reset</button>
+              <button id="cancelRouteBtn" class="secondary btn btn-sm" title="Cancel active route">Cancel Route</button>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
-    <div class="panel" style="min-width:280px;" id="objectivesPanel">
-      <h3><button class="collapseToggle" data-panel="objectivesPanel" title="Collapse/Expand">▾</button> Objectives (any order)</h3>
-      <div class="panelBody">
-        <ul id="objectives"></ul>
-      </div>
-    </div>
-    <div class="panel" id="vocabPanel">
-      <h3><button class="collapseToggle" data-panel="vocabPanel" title="Collapse/Expand">▾</button> Study Words</h3>
-      <div class="panelBody">
-        <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
-          <input id="studySearch" placeholder="Filter study words…" style="flex:1; padding:6px 8px; border-radius:6px; border:1px solid #28313c; background:#0f141a; color:var(--text);" />
-          <div style="font-size:.75rem; opacity:.8;">Show: <span id="studyCount">0</span></div>
+      <!-- Objectives Panel -->
+      <div class="accordion-item panel" id="objectivesPanel">
+        <h2 class="accordion-header" id="headingObjectives">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#objectivesPanelBody" aria-expanded="false" aria-controls="objectivesPanelBody">
+            Objectives (any order)
+          </button>
+        </h2>
+        <div id="objectivesPanelBody" class="accordion-collapse collapse" data-bs-parent="#mainAccordion">
+          <div class="accordion-body panelBody">
+            <ul id="objectives" class="mb-0"></ul>
+          </div>
         </div>
-        <ul id="studyList"></ul>
-        <div id="exportRow">
-          <button id="exportCsvBtn" class="secondary" title="Export to Anki CSV">Export CSV</button>
-          <label style="font-size:.6rem; display:flex; align-items:center; gap:4px;"><input type="checkbox" id="includeExportedChk"/> Include exported</label>
-          <button id="clearExportFlagsBtn" class="secondary" title="Reset exported flags">Reset Flags</button>
+      </div>
+      <!-- Study Words Panel -->
+      <div class="accordion-item panel" id="vocabPanel">
+        <h2 class="accordion-header" id="headingVocab">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#vocabPanelBody" aria-expanded="false" aria-controls="vocabPanelBody">
+            Study Words
+          </button>
+        </h2>
+        <div id="vocabPanelBody" class="accordion-collapse collapse" data-bs-parent="#mainAccordion">
+          <div class="accordion-body panelBody">
+            <div class="d-flex gap-2 align-items-center mb-2">
+              <input id="studySearch" class="form-control form-control-sm" placeholder="Filter study words…" />
+              <div style="font-size:.7rem; opacity:.75;">Show: <span id="studyCount">0</span></div>
+            </div>
+            <ul id="studyList" class="list-unstyled mb-2"></ul>
+            <div id="exportRow" class="d-flex flex-wrap gap-2">
+              <button id="exportCsvBtn" class="secondary btn btn-sm" title="Export to Anki CSV">Export CSV</button>
+              <label style="font-size:.6rem; display:flex; align-items:center; gap:4px;" class="form-check"><input type="checkbox" id="includeExportedChk" class="form-check-input"/> Include exported</label>
+              <button id="clearExportFlagsBtn" class="secondary btn btn-sm" title="Reset exported flags">Reset Flags</button>
+              <button id="resetWordsBtn" class="secondary btn btn-sm" title="Clear all seen words and reset study list">Reset Words</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -237,64 +317,157 @@
   <div id="helpPane">
     <div class="inner panel">
   <h1>TravelSim <span class="localeCity">Madrid</span> Help</h1>
-  <p>Move by <strong>double-clicking the map</strong> to plan a walking route (OSRM). Keyboard movement is disabled in this mode. Approach POIs (Airport, Hotel, Plaza Mayor, Museo del Prado, Retiro Park, Restaurant) to interact. When in range press <strong>Space</strong> or type and pick <em>NPC</em> to practice <span class="localeTargetLang">Spanish</span>. Use <em>Interpreter</em> for <span class="localeBaseLang">English</span> explanations. After completing all daily objectives, stand near the Hotel and press <strong>Sleep</strong> to advance the day.</p>
-      <p>Vocabulary is highlighted on first appearance. This is a stub; no real AI calls are made.</p>
+  <p>Move by <strong>double-clicking the map</strong> to plan a walking route (OSRM). Keyboard movement is disabled in this mode. Approach POIs (Airport, Hotel, Plaza Mayor, Museo del Prado, Retiro Park, Restaurant) to interact. When in range pick the POI to practice <span class="localeTargetLang">Spanish</span>. Use <em>Interpreter</em> for <span class="localeBaseLang">English</span> explanations.</p>
+      <p>Vocabulary is highlighted on first appearance.</p>
       <p style="text-align:center; margin-top:30px;"><button id="closeHelp">Close</button></p>
     </div>
   </div>
-  <!-- Initial Setup Overlay -->
-  <div id="setupPane" style="position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:1200; display:flex; align-items:center; justify-content:center;">
-    <div class="panel" style="max-width:600px; width:100%;">
-      <h2 style="margin-top:0;">Start a New Session</h2>
-      <p style="font-size:.75rem; opacity:.8;">Configure your target language, base language, city & country. Objectives will be generated dynamically for the chosen city.</p>
-      <form id="setupForm" style="display:flex; flex-wrap:wrap; gap:10px;">
-        <label style="flex:1 1 100%; font-size:.65rem;">Preset<br>
-          <select id="presetSelect" style="width:100%; padding:6px;">
-            <option value="custom">Custom…</option>
-            <option value="madrid" selected>Madrid (Spanish)</option>
-            <option value="valencia">Valencia (Spanish)</option>
-            <option value="berlin">Berlin (German)</option>
-            <option value="paris">Paris (French)</option>
-            <option value="rome">Rome (Italian)</option>
-            <option value="tokyo">Tokyo (Japanese)</option>
-          </select>
-        </label>
-        <label style="flex:1 1 45%; font-size:.65rem;">City<br><input name="city" value="Madrid" required style="width:100%; padding:6px;"/></label>
-        <label style="flex:1 1 45%; font-size:.65rem;">Country<br><input name="country" value="Spain" required style="width:100%; padding:6px;"/></label>
-        <label style="flex:1 1 45%; font-size:.65rem;">Target Language Name<br><input name="targetLangName" value="Spanish" required style="width:100%; padding:6px;"/></label>
-        <label style="flex:1 1 45%; font-size:.65rem;">Target Language ISO<br><input name="targetLangISO" value="es" required style="width:100%; padding:6px;"/></label>
-        <label style="flex:1 1 45%; font-size:.65rem;">Base Language Name<br><input name="baseLangName" value="English" required style="width:100%; padding:6px;"/></label>
-        <label style="flex:1 1 45%; font-size:.65rem;">Base Language ISO<br><input name="baseLangISO" value="en" required style="width:100%; padding:6px;"/></label>
-        <label style="flex:1 1 45%; font-size:.65rem;">Starting Latitude<br><input name="lat" value="40.491679" required style="width:100%; padding:6px;"/></label>
-        <label style="flex:1 1 45%; font-size:.65rem;">Starting Longitude<br><input name="lon" value="-3.593266" required style="width:100%; padding:6px;"/></label>
-        <label style="flex:1 1 100%; font-size:.65rem;">Approx. Airport/Start Description (optional)<br><input name="airport" placeholder="Adolfo Suárez Madrid-Barajas" style="width:100%; padding:6px;"/></label>
-        <div style="flex:1 1 100%; display:flex; gap:10px; margin-top:4px;">
-          <button type="submit" id="setupSubmitBtn">Start Game</button>
-          <button type="button" id="setupCancelBtn" class="secondary">Use Defaults</button>
+  <!-- Setup Modal (Bootstrap) -->
+  <div class="modal fade" id="setupPane" tabindex="-1" aria-labelledby="setupPaneLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content bg-dark text-light" style="border:1px solid #28313c;">
+        <div class="modal-header" style="border-bottom:1px solid #28313c;">
+          <h5 class="modal-title" id="setupPaneLabel">Start a New Session</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-      </form>
-      <div id="setupStatus" style="margin-top:10px; font-size:.65rem; opacity:.8;"></div>
+        <div class="modal-body">
+          <p class="small text-secondary mb-3">Configure your target language, base language, city & country. Objectives will be generated dynamically for the chosen city.</p>
+          <form id="setupForm" class="row g-2">
+            <div class="col-12 small">
+              <label class="form-label mb-1">Preset
+                <select id="presetSelect" class="form-select form-select-sm">
+                  <option value="custom">Custom…</option>
+                  <option value="madrid" selected>Madrid (Spanish)</option>
+                  <option value="valencia">Valencia (Spanish)</option>
+                  <option value="berlin">Berlin (German)</option>
+                  <option value="paris">Paris (French)</option>
+                  <option value="rome">Rome (Italian)</option>
+                  <option value="tokyo">Tokyo (Japanese)</option>
+                </select>
+              </label>
+            </div>
+            <div class="col-6 small"><label class="form-label mb-1">City<input name="city" value="Madrid" required class="form-control form-control-sm"/></label></div>
+            <div class="col-6 small"><label class="form-label mb-1">Country<input name="country" value="Spain" required class="form-control form-control-sm"/></label></div>
+            <div class="col-6 small"><label class="form-label mb-1">Target Language Name<input name="targetLangName" value="Spanish" required class="form-control form-control-sm"/></label></div>
+            <div class="col-6 small"><label class="form-label mb-1">Target Language ISO<input name="targetLangISO" value="es" required class="form-control form-control-sm"/></label></div>
+            <div class="col-6 small"><label class="form-label mb-1">Base Language Name<input name="baseLangName" value="English" required class="form-control form-control-sm"/></label></div>
+            <div class="col-6 small"><label class="form-label mb-1">Base Language ISO<input name="baseLangISO" value="en" required class="form-control form-control-sm"/></label></div>
+            <div class="col-6 small"><label class="form-label mb-1">Starting Latitude<input name="lat" value="40.491679" required class="form-control form-control-sm"/></label></div>
+            <div class="col-6 small"><label class="form-label mb-1">Starting Longitude<input name="lon" value="-3.593266" required class="form-control form-control-sm"/></label></div>
+            <div class="col-12 small"><label class="form-label mb-1">Approx. Airport/Start Description (optional)<input name="airport" placeholder="Adolfo Suárez Madrid-Barajas" class="form-control form-control-sm"/></label></div>
+            <div class="col-12 d-flex gap-2 mt-2">
+              <button type="submit" id="setupSubmitBtn" class="btn btn-warning btn-sm fw-semibold">Start Game</button>
+              <button type="button" id="setupCancelBtn" class="btn btn-secondary btn-sm">Use Defaults</button>
+            </div>
+          </form>
+          <div id="setupStatus" class="mt-2 small text-secondary"></div>
+        </div>
+      </div>
     </div>
   </div>
-  <div id="chatPanel" class="panel">
-    <div id="chatGrab" class="chatGrab" title="Drag to resize chat panel"></div>
-    <div id="nearbyTabs" class="nearbyTabs" aria-label="Nearby locations tabs"></div>
-    <div id="log"></div>
-    <div id="inputRow">
-  <input id="msgInput" placeholder="Type your message (Spanish or English)…" />
-      <button id="micBtn" class="secondary" title="Voice dictate (Whisper)">🎤</button>
-      <button id="npcBtn">NPC</button>
-      <button id="interpreterBtn" class="secondary">Interpreter</button>
-      <button id="translateBtn" class="secondary">Translate Last</button>
-      <button id="discoverBtn" class="secondary">Discover</button>
+  <!-- Bottom Chat Accordion -->
+  <div id="chatAccordion" class="accordion">
+    <div class="accordion-item" style="background:var(--panel); border:1px solid #28313c; border-radius:var(--radius); overflow:hidden;">
+      <h2 class="accordion-header" id="chatHeader">
+        <button class="accordion-button py-2" type="button" data-bs-toggle="collapse" data-bs-target="#chatCollapse" aria-expanded="true" aria-controls="chatCollapse" style="background:#15202a; color:var(--accent);">
+          Chat
+        </button>
+      </h2>
+      <div id="chatCollapse" class="accordion-collapse collapse show" data-bs-parent="#chatAccordion">
+        <div class="accordion-body p-0" style="background:transparent;">
+          <div id="chatPanel" class="panel chat-card card shadow-sm" style="background:transparent; border:none; box-shadow:none;">
+    <div class="chat-header card-header d-flex align-items-center gap-2 flex-wrap">
+  <div id="nearbyTabs" class="nearbyTabs" aria-label="Nearby locations tabs"></div>
+    </div>
+    <div id="log" class="chat-body"></div>
+    <div id="inputRow" class="chat-footer">
+      <input id="msgInput" class="form-control mb-2" placeholder="Type your message…" />
+      <div class="chat-actions" id="chatActions">
+        <button id="micBtn" class="btn" aria-label="Voice input" title="Voice input (Whisper)"><i class="bi bi-mic-fill"></i></button>
+        <button id="npcBtn" class="btn" aria-label="Send to NPC" title="Send to NPC"><i class="bi bi-chat-left-text"></i><span class="d-none d-sm-inline">Speak</span></button>
+        <button id="interpreterBtn" class="btn" aria-label="Interpreter help" title="Interpreter"><i class="bi bi-easel"></i><span class="d-none d-sm-inline">Guide</span></button>
+        <button id="translateBtn" class="btn" aria-label="Translate last" title="Translate last NPC line"><i class="bi bi-translate"></i><span class="d-none d-sm-inline">Translate</span></button>
+        <button id="discoverBtn" class="btn" aria-label="Discover POI" title="Discover POI"><i class="bi bi-search"></i><span class="d-none d-sm-inline">POI</span></button>
+      </div>
+    </div>
+  </div>
+        </div>
+      </div>
     </div>
   </div>
   <div id="vocabTooltip"></div>
 
   <script>
+    /* Responsive helper: auto-collapse panels on narrow screens and adjust classes */
+    (function(){
+      const MOBILE_BREAK = 760;
+      function applyResponsive(){
+        const isMobile = window.innerWidth <= MOBILE_BREAK;
+        document.body.classList.toggle('is-mobile', isMobile);
+        if(isMobile){
+          document.querySelectorAll('.panel').forEach(p => {
+            if(p.id === 'chatPanel') return;
+            if(!p.dataset.userToggled){ p.classList.add('collapsed'); }
+          });
+        }
+        // Detect Bootstrap modal visibility (has .show)
+        const modalEl = document.getElementById('setupPane');
+        const open = modalEl && modalEl.classList.contains('show');
+        document.body.classList.toggle('overlay-open', !!open);
+      }
+      window.addEventListener('resize', applyResponsive);
+      window.addEventListener('orientationchange', applyResponsive);
+      document.addEventListener('DOMContentLoaded', applyResponsive);
+      // Track user manual toggles so we don't override them on resize
+      document.addEventListener('click', e => {
+        if(e.target && e.target.classList && e.target.classList.contains('collapseToggle')){
+          const panelId = e.target.getAttribute('data-panel');
+          const panel = document.getElementById(panelId);
+          if(panel){ panel.dataset.userToggled = '1'; }
+        }
+        // Re-evaluate after user actions (e.g., closing setup overlay)
+        setTimeout(applyResponsive, 50);
+      });
+    })();
     if(!window.L){
       console.error('Leaflet library failed to load (window.L missing).');
     }
+
+    /* Right-click (contextmenu) tooltips for action buttons (desktop enhancement).
+       Reuses the existing .mobile-hint element so styling stays unified. */
+    (function(){
+      const actions = document.getElementById('chatActions');
+      if(!actions) return;
+      let hintEl = document.querySelector('.mobile-hint');
+      if(!hintEl){
+        hintEl = document.createElement('div');
+        hintEl.className = 'mobile-hint';
+        document.body.appendChild(hintEl);
+      }
+      function showHint(btn){
+        const text = btn.getAttribute('aria-label') || btn.getAttribute('title') || btn.textContent.trim();
+        if(!text) return;
+        const rect = btn.getBoundingClientRect();
+        hintEl.textContent = text;
+        hintEl.style.left = (rect.left + rect.width/2) + 'px';
+        hintEl.style.top = (rect.top - 10) + 'px';
+        hintEl.classList.add('show');
+        clearTimeout(hintEl._hideTimer);
+        hintEl._hideTimer = setTimeout(()=> hintEl.classList.remove('show'), 1600);
+      }
+      actions.querySelectorAll('button').forEach(btn => {
+        btn.addEventListener('contextmenu', e => {
+          e.preventDefault();
+          showHint(btn);
+        });
+        // Also allow auxiliary (right) mouse button press to trigger quickly before contextmenu fires
+        btn.addEventListener('mousedown', e => {
+          if(e.button === 2){
+            showHint(btn);
+          }
+        });
+      });
+    })();
 
     /*****************************************************
      * CONFIGURATION
@@ -426,7 +599,7 @@
       const bl = document.getElementById('baseLangLabel');
       if(bl) bl.textContent = `${LOCALE.baseLangName} (${LOCALE.baseLangISO})`;
       const inp = document.getElementById('msgInput');
-      if(inp) inp.setAttribute('placeholder', `Type your message (${LOCALE.targetLangName} or ${LOCALE.baseLangName})…`);
+      if(inp) inp.setAttribute('placeholder', `Type your message…`);
     }
     applyLocale();
 
@@ -490,7 +663,9 @@
     let objectivesState = CONFIG.days.map(day => day.objectives.map(o => ({ text:o, done:false })));
     let lastNPCSpanish = '';
     const learnedVocab = new Set();
-    const discoveredWords = new Set();
+  const discoveredWords = new Set();
+  // Words discovered in this session but not yet promoted to discoveredWords (used to avoid timing races)
+  const sessionNewWords = new Set();
 
     // Player position as Leaflet LatLng
     let playerLatLng = L.latLng(CONFIG.origin.lat, CONFIG.origin.lon);
@@ -620,7 +795,8 @@
           lastIndex = spanishRun.lastIndex;
         }
         if(lastIndex < t.length) parts.push({text: t.slice(lastIndex), spanish:false});
-        contentHtml = parts.map(p => p.spanish ? highlightNewVocab(escapeHtml(p.text)) : escapeHtml(p.text)).join('');
+        // Pass allowDiscover=false so interpreter output does not mark new vocabulary
+        contentHtml = parts.map(p => p.spanish ? highlightNewVocab(escapeHtml(p.text), false) : escapeHtml(p.text)).join('');
       } else {
         contentHtml = highlightNewVocab(escapeHtml(text));
       }
@@ -905,7 +1081,8 @@ Return strictly the JSON array; no commentary.`;
 
     function escapeHtml(str){ return str.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 
-    function highlightNewVocab(text){
+    // allowDiscover: when false, do not mark words as newly discovered (used for interpreter output)
+    function highlightNewVocab(text, allowDiscover=true){
       // Replace Spanish words with clickable spans; new words get special class.
       // Be conservative: ignore very short tokens or pure punctuation to avoid annotating English UI text.
       return text.split(/(\s+)/).map(part => {
@@ -915,9 +1092,11 @@ Return strictly the JSON array; no commentary.`;
         // skip annotation for empty, very short, or numeric tokens
         if(!raw || raw.length <= 2 || /^\d+$/.test(raw)) return escapeHtml(part);
         if(isSpanishWord(word)){
-          const isNew = !discoveredWords.has(word);
-          if(isNew) discoveredWords.add(word);
-          registerWord(word, part);
+          // If interpreter output passes allowDiscover=false we should not mark the word as new
+          const isNew = allowDiscover && !discoveredWords.has(word) && !sessionNewWords.has(word);
+          if(isNew) sessionNewWords.add(word);
+          // Only persist/register contexts when discovery is allowed
+          if(allowDiscover) registerWord(word, part);
           return `<span class='vocab-word ${isNew?"vocab-new":""}' data-word='${escapeHtml(word)}'>${escapeHtml(part)}</span>`;
         }
         return escapeHtml(part);
@@ -940,6 +1119,19 @@ Return strictly the JSON array; no commentary.`;
       return false;
     }
 
+    // Ensure DOM spans for vocab reflect current discoveredWords/wordStore state.
+    function applyVocabHighlights(){
+      // Only add the 'vocab-new' marker for session-discovered words.
+      // Do not remove the class from existing spans — we want historical highlights to persist
+      // until the user explicitly resets all words.
+      document.querySelectorAll('.vocab-word').forEach(span => {
+        const w = (span.getAttribute('data-word')||'').toLowerCase();
+        if(sessionNewWords.has(w) && !span.classList.contains('vocab-new')){
+          span.classList.add('vocab-new');
+        }
+      });
+    }
+
     // Normalize strings for diacritic-insensitive comparison (e.g., 'cómo' -> 'como')
     function stripDiacritics(str){
       if(!str) return '';
@@ -952,22 +1144,8 @@ Return strictly the JSON array; no commentary.`;
     // Re-open setup modal when user clicks Setup; prefill with current locale & origin
     if(elSetupBtn){
       elSetupBtn.addEventListener('click', () => {
-        const pane = document.getElementById('setupPane');
         const form = document.getElementById('setupForm');
-        if(pane){ pane.style.display = 'flex'; }
-          // Inject close (X) button when reopening after game start
-          if(pane && gameStarted){
-            if(!pane.querySelector('.setupCloseBtn')){
-              const btn = document.createElement('button');
-              btn.type = 'button';
-              btn.className = 'setupCloseBtn';
-              btn.textContent = '×';
-              btn.title = 'Close setup without resetting the session';
-              Object.assign(btn.style, { position:'absolute', top:'8px', right:'12px', background:'transparent', color:'#fff', fontSize:'28px', border:'none', cursor:'pointer', lineHeight:'24px' });
-              btn.addEventListener('click', () => { pane.style.display = 'none'; });
-              pane.appendChild(btn);
-            }
-          }
+        if(window.setupModal){ window.setupModal.show(); }
         if(form){
           const setVal = (name, val) => { const inp = form.querySelector(`[name=${name}]`); if(inp) inp.value = val; };
           setVal('city', LOCALE.city);
@@ -1075,7 +1253,8 @@ Return strictly the JSON array; no commentary.`;
               lastIndex = spanishRun.lastIndex;
             }
             if(lastIndex < text.length) parts.push({text: text.slice(lastIndex), spanish:false});
-            contentHtml = parts.map(p => p.spanish ? highlightNewVocab(escapeHtml(p.text)) : escapeHtml(p.text)).join('');
+            // Interpreter output should not register or highlight new words
+            contentHtml = parts.map(p => p.spanish ? highlightNewVocab(escapeHtml(p.text), false) : escapeHtml(p.text)).join('');
           } else {
             // Default: annotate (NPC and others). Use highlightNewVocab for annotation.
             contentHtml = highlightNewVocab(escapeHtml(m.content));
@@ -1164,6 +1343,15 @@ Return strictly the JSON array; no commentary.`;
           persistWords();
         }
       }
+      // Ensure any visible vocab spans get their highlight class applied
+      try { applyVocabHighlights(); } catch(e){}
+      // After a short delay, promote session-new words into discoveredWords so they aren't treated as new again
+      setTimeout(() => {
+        sessionNewWords.forEach(w => discoveredWords.add(w));
+        // clear session markers after promotion to avoid persistent growth
+        sessionNewWords.clear();
+        try { applyVocabHighlights(); } catch(e){}
+      }, 800);
     }
 
     function toggleSaved(word){
@@ -1179,6 +1367,32 @@ Return strictly the JSON array; no commentary.`;
     function resetExportFlags(){
       Object.values(wordStore).forEach(w => w.exported = false); persistWords(); renderStudyList();
     }
+
+    // Clear all stored words (persisted and in-memory) and reset study UI
+    function resetAllWords(){
+      if(!confirm('Reset all seen words and study data? This will remove saved/export flags and discovered highlights.')) return;
+      // Clear in-memory tracking sets
+      discoveredWords.clear();
+      learnedVocab.clear();
+  sessionNewWords.clear();
+  // Clear persisted store (remove LS key to avoid stale data) and empty runtime store
+  try { localStorage.removeItem('ts_words'); } catch(e){}
+  for(const k of Object.keys(wordStore)) delete wordStore[k];
+  // Ensure persisted representation matches in-memory state
+  persistWords();
+      renderStudyList();
+      // Remove old highlight class from existing chat log entries
+      document.querySelectorAll('.vocab-new').forEach(el => el.classList.remove('vocab-new'));
+      // Re-render current conversation so highlightNewVocab runs again on visible messages
+      try { renderConversation(typeof nearbyTabState !== 'undefined' ? nearbyTabState.selectedId : null); } catch(e){}
+      // Ensure highlights on newly rendered content
+      try { applyVocabHighlights(); } catch(e){}
+      log('System', 'All seen words and study data have been reset.');
+    }
+
+    // Hook reset button if present
+    const elResetWordsBtn = document.getElementById('resetWordsBtn');
+    if(elResetWordsBtn){ elResetWordsBtn.addEventListener('click', resetAllWords); }
 
     function persistWords(){ localStorage.setItem('ts_words', JSON.stringify(wordStore)); }
 
@@ -1260,6 +1474,20 @@ Return strictly the JSON array; no commentary.`;
       if(act==='save'){ toggleSaved(tooltipWord); vocabTooltip.style.display='none'; }
     });
     document.addEventListener('click', e => { if(vocabTooltip.style.display==='block' && !e.target.closest('#vocabTooltip') && !e.target.closest('.vocab-word')) vocabTooltip.style.display='none'; });
+
+    // MutationObserver: re-apply highlights when new vocab-word spans are added to the chat log
+    try {
+      const mo = new MutationObserver(muts => {
+        let added = false;
+        for(const m of muts){
+          if(m.addedNodes && m.addedNodes.length){
+            m.addedNodes.forEach(n => { if(n.querySelector && n.querySelector('.vocab-word')) added = true; if(n.classList && n.classList.contains('vocab-word')) added = true; });
+          }
+        }
+        if(added) { try { applyVocabHighlights(); } catch(e){} }
+      });
+      mo.observe(elLog, { childList:true, subtree:true });
+    } catch(e) { /* ignore if MutationObserver unsupported */ }
 
     // Study list panel actions (includes exported toggle via check icon)
     elStudyList.addEventListener('click', e => {
@@ -1934,7 +2162,7 @@ Return strictly the JSON array; no commentary.`;
   const systemPrompt = `You are an interpreter and travel-guide coach. Stay in character and be concise. Respond primarily in ${LOCALE.baseLangName}, but always show example ${LOCALE.targetLangName} phrases first.
 
 Formatting rules:
-- If the user asks "How do I say/ask <something>?" return exactly 1–2 natural ${LOCALE.targetLangName} sentence options (each on its own line and bolded) followed by a one- to two-sentence explanation in ${LOCALE.baseLangName}. No greetings or filler.
+- If the user asks "How do I say/ask <something>?" return exactly 1–2 natural ${LOCALE.targetLangName} sentence options (each on its own line) followed by a one- to two-sentence explanation in ${LOCALE.baseLangName}. No greetings or filler.
 - If the user pastes ${LOCALE.targetLangName}, first give a clear ${LOCALE.baseLangName} translation, then explain one key grammar or vocabulary point (one short paragraph).
 - For general requests, prioritize helpful example phrases followed by a brief explanation. If a noun/place is ambiguous, provide one natural translation and note an alternative in one short sentence.
 - Keep replies short and user-focused. Do not attempt hard-coded substitutions client-side.`;
@@ -1965,7 +2193,7 @@ Formatting rules:
   if(m && m[1]){
     const target = m[1].trim();
     const envCtx = buildEnvironmentContext(poiId);
-    const userForAI = `User asked: "${target}". Provide 1-2 natural ${LOCALE.targetLangName} sentence options to express this (bold each option on its own line). Then give a concise (1-2 sentence) explanation in ${LOCALE.baseLangName}. No greetings.`;
+    const userForAI = `User asked: "${target}". Provide 1-2 natural ${LOCALE.targetLangName} sentence options to express this. Then give a concise (1-2 sentence) explanation in ${LOCALE.baseLangName}. No greetings.`;
     const history = [{ role:'system', content: systemPrompt }, { role:'system', content: envCtx }, { role:'user', content: userForAI }, ...threadToApiMessages(conv)];
     const ai = await callOpenAI(history);
     const resp = ai || `**${target}**\n(Unable to generate phrasing.)`;
@@ -2051,6 +2279,10 @@ Formatting rules:
 
     const setupForm = document.getElementById('setupForm');
     const setupPane = document.getElementById('setupPane');
+    // Initialize Bootstrap modal instance for setup pane
+    if(setupPane && window.bootstrap){
+      try { window.setupModal = new bootstrap.Modal(setupPane, { backdrop:'static', keyboard:false }); window.setupModal.show(); } catch(e) { console.warn('Modal init failed', e); }
+    }
     if(setupForm){
       // Ensure no full-page reload (GET) occurs
       setupForm.setAttribute('action','javascript:void(0);');
@@ -2061,7 +2293,7 @@ Formatting rules:
         const values = Object.fromEntries(formData.entries());
         await startGameFromSetup(values);
         gameStarted = true;
-        if(setupPane) setupPane.style.display = 'none';
+        if(window.setupModal){ window.setupModal.hide(); }
         log('System', `Session started in ${LOCALE.city}, ${LOCALE.country}.`);
       };
       setupForm.addEventListener('submit', handleSubmit);
@@ -2082,7 +2314,7 @@ Formatting rules:
         };
         await startGameFromSetup(defaults);
         gameStarted = true;
-        setupPane.style.display = 'none';
+        if(window.setupModal){ window.setupModal.hide(); }
         log('System', `Session started with defaults in ${LOCALE.city}.`);
       });
     }
@@ -2127,6 +2359,48 @@ Formatting rules:
     elMsg.addEventListener('keydown', e => { if(e.key==='Enter'){ e.preventDefault(); elNPCBtn.click(); } });
 
     /*****************************************************
+     * MOBILE LONG-PRESS TOOLTIPS FOR CHAT ACTIONS
+     *****************************************************/
+    (function initMobileTooltips(){
+      const isTouch = matchMedia('(pointer:coarse)').matches || 'ontouchstart' in window;
+      if(!isTouch) return; // Only enable on touch devices
+      const buttons = ['micBtn','npcBtn','interpreterBtn','translateBtn','discoverBtn']
+        .map(id => document.getElementById(id))
+        .filter(Boolean);
+      if(!buttons.length) return;
+      let hintEl = document.createElement('div');
+      hintEl.className = 'mobile-hint';
+      hintEl.setAttribute('role','tooltip');
+      document.body.appendChild(hintEl);
+      let pressTimer = null;
+      let activeBtn = null;
+      const PRESS_MS = 550;
+      function showHint(btn){
+        const text = btn.getAttribute('data-tip') || btn.getAttribute('title') || btn.getAttribute('aria-label') || 'Info';
+        hintEl.textContent = text;
+        const rect = btn.getBoundingClientRect();
+        hintEl.style.left = (rect.left + rect.width/2 + window.scrollX) + 'px';
+        hintEl.style.top = (rect.top + window.scrollY - 6) + 'px';
+        hintEl.classList.add('show');
+      }
+      function hideHint(){ hintEl.classList.remove('show'); }
+      function clearTimer(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } }
+      function startPress(e){
+        activeBtn = e.currentTarget;
+        clearTimer(); hideHint();
+        pressTimer = setTimeout(() => { if(activeBtn){ showHint(activeBtn); } }, PRESS_MS);
+      }
+      function cancelPress(){ clearTimer(); hideHint(); activeBtn=null; }
+      buttons.forEach(btn => {
+        // Use pointer events for broader device compatibility
+        btn.addEventListener('pointerdown', startPress);
+        btn.addEventListener('pointerup', cancelPress);
+        btn.addEventListener('pointerleave', cancelPress);
+        btn.addEventListener('pointercancel', cancelPress);
+      });
+    })();
+
+    /*****************************************************
      * HELP OVERLAY
      *****************************************************/
     helpToggle.addEventListener('click', () => { helpPane.style.display='flex'; });
@@ -2166,6 +2440,8 @@ Formatting rules:
       grab.addEventListener('mousedown', begin); window.addEventListener('mousemove', move); window.addEventListener('mouseup', end);
       grab.addEventListener('touchstart', begin, {passive:true}); window.addEventListener('touchmove', move, {passive:true}); window.addEventListener('touchend', end);
     })();
+
+    // Messages toggle removed; chat remains fully visible.
 
     /*****************************************************
      * INITIAL LOG ENTRIES
