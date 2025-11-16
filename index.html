@@ -1641,8 +1641,9 @@ Return strictly the JSON array; no commentary.`;
         if(!latEl || !lonEl) return;
         // Filter interesting tags: cafe/restaurant/hotel/airport/shop/bus_station etc.
         const tags = el.tags || {};
-        // Defensive: exclude benches (amenity=bench) explicitly even if they slip through the query
+        // Defensive: exclude benches (amenity=bench|tower) explicitly even if they slip through the query
         if((tags.amenity || '').toString().toLowerCase() === 'bench') return;
+        if((tags.amenity || '').toString().toLowerCase() === 'tower') return;
         const kind = (tags.amenity || tags.tourism || tags.shop || tags.aeroway || '').toLowerCase();
         const name = tags.name || tags['name:en'] || `OSM ${kind || el.type}`;
         // skip skippable OSM features entirely (navigation aids, gates, holding positions)
@@ -1651,7 +1652,7 @@ Return strictly the JSON array; no commentary.`;
         // dedupe: skip if we already have a dynamicPOI with same name & approx coords
         const exists = dynamicPOIs.some(d => d.name === name && Math.abs(d.lat - latEl) < 0.0003 && Math.abs(d.lon - lonEl) < 0.0003);
         if(exists) return;
-  const poi = addDynamicPOI({ name, lat: latEl, lon: lonEl, description: kind || JSON.stringify(tags), confidence:'precise', tags: tags });
+        const poi = addDynamicPOI({ name, lat: latEl, lon: lonEl, description: kind || JSON.stringify(tags), confidence:'precise', tags: tags });
         // dynamic POIs loaded from OSM are not considered 'discovered' until player gets close
         poi._osm = true;
         poi._discovered = false;
