@@ -3,6 +3,9 @@ import dotenv from 'dotenv';
 import fetch from 'node-fetch';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import multer from 'multer';
+import os from 'os';
+import fs from 'fs';
 
 dotenv.config();
 const app = express();
@@ -46,6 +49,58 @@ app.post('/api/chat', async (req, res) => {
     res.json({ content });
   } catch(err){
     console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// === Whisper transcription endpoint ===
+// Accepts multipart/form-data with fields: file (audio), model (optional), language (required for narrowing)
+// Returns JSON: { text, model }
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, os.tmpdir()),
+    filename: (req, file, cb) => cb(null, 'whisper_' + Date.now() + '_' + (file.originalname||'audio'))
+  }),
+  limits: { fileSize: 25 * 1024 * 1024 } // 25MB max
+});
+
+app.post('/api/whisper', upload.single('file'), async (req, res) => {
+  const cleanup = () => { try { if(req.file && req.file.path) fs.unlinkSync(req.file.path); } catch(e){} };
+  try {
+    if(!API_KEY) return res.status(500).json({ error: 'Missing OPENAI_API_KEY' });
+    if(!req.file) return res.status(400).json({ error: 'No audio file provided (field "file")' });
+    const { model = 'whisper-1', language } = req.body;
+    if(!language || typeof language !== 'string' || language.length < 2){
+      cleanup();
+      return res.status(400).json({ error: 'Language parameter required (ISO code)' });
+    }
+    // Build form-data to forward to OpenAI
+    const form = new FormData();
+    form.append('model', model);
+    form.append('file', new Blob([fs.readFileSync(req.file.path)]), req.file.originalname || 'audio.webm');
+    form.append('language', language); // Force language to avoid omnilingual mis-recognition
+    // Optional: temperature/response_format
+    form.append('temperature', '0');
+    try { form.append('response_format', 'json'); } catch(e){}
+
+    const resp = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${API_KEY}` },
+      body: form
+    });
+    if(!resp.ok){
+      const txt = await resp.text();
+      cleanup();
+      return res.status(resp.status).json({ error: 'OpenAI error', detail: txt });
+    }
+    const data = await resp.json();
+    cleanup();
+    // Standardize output field name
+    const text = data.text || data.transcript || '';
+    res.json({ text, model, language });
+  } catch(err){
+    cleanup();
+    console.error('Whisper endpoint error', err);
     res.status(500).json({ error: err.message });
   }
 });

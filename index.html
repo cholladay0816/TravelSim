@@ -26,7 +26,7 @@
     html, body { height:100%; margin:0; padding:0; background: var(--bg); color: var(--text); font-family: system-ui, Segoe UI, Arial, sans-serif; }
     #map { position:absolute; top:0; left:0; right:0; bottom:0; z-index:1; }
   /* HUD container: allow clicks to pass through except where panels are present */
-  .hud { position:fixed; z-index:500; display:flex; gap:12px; top:8px; left:8px; flex-wrap:wrap; pointer-events: none; }
+  .hud { position:fixed; z-index:500; display:flex; gap:12px; top:8px; left:8px; flex-wrap:wrap; pointer-events: none; align-items:flex-start; }
   /* Panels must be interactive (override container) */
   .panel { background: var(--panel); padding:10px 14px; border-radius: var(--radius); box-shadow: 0 4px 14px -4px rgba(0,0,0,.6); backdrop-filter: blur(4px); pointer-events: auto; transition: max-height .22s ease, padding .18s ease, opacity .18s ease; min-width:200px; }
   /* Make headers align nicely and remain visible when collapsed */
@@ -41,9 +41,17 @@
   .panel.collapsed h2, .panel.collapsed h3 { margin:0; }
   .panel.collapsed .collapseToggle { transform:rotate(-90deg); }
     .flex { display:flex; }
-    #objectives li { margin-bottom:4px; line-height:1.2; }
+    #objectives li { margin:0; padding:6px 4px 6px 0; line-height:1.25; border-bottom:1px solid #28313c; }
+    #objectives li:last-child { border-bottom:none; }
     #objectives li.done { text-decoration: line-through; opacity:.55; }
-    #objectives { list-style: none; padding-left:0; margin:0; max-width:260px; }
+      #objectives { list-style: none; padding-left:0; margin:0; max-width:260px; }
+    /* Objectives panel: independent scroll so it doesn't force other panels to match height */
+    #objectivesPanel .panelBody { max-height:260px; overflow:auto; position:relative; }
+    #objectivesPanel .panelBody::-webkit-scrollbar { width:12px; }
+    #objectivesPanel .panelBody::-webkit-scrollbar-track { background: rgba(15,20,26,0.6); border-radius:8px; }
+    #objectivesPanel .panelBody::-webkit-scrollbar-thumb { background:#60707a; border-radius:8px; border:2px solid rgba(0,0,0,0.12); background-clip: padding-box; }
+    #objectivesPanel .panelBody::-webkit-scrollbar-thumb:hover { background:#78878f; }
+    #objectivesPanel .panelBody { scrollbar-width: thin; scrollbar-color: #28313c rgba(255,255,255,0.02); }
     #dayBadge { font-size:.9rem; font-weight:600; background: var(--accent2); color:#fff; padding:4px 10px; border-radius:20px; display:inline-block; }
   #chatPanel { position:fixed; bottom:8px; left:8px; right:8px; z-index:600; display:flex; flex-direction:column; gap:6px; max-width:860px; height:320px; }
   /* Chat grab handle for resizing: larger hit area, visually centered and overlapping panel padding */
@@ -100,7 +108,14 @@
     max-height dynamically; provide sensible defaults and scrollbar styling. */
   /* Study list: default scrollable area with a sensible max height so the scrollbar appears
     when there are more items. JS will still adjust maxHeight dynamically as needed. */
-  #studyList { list-style:none; margin:0; padding:0 6px 0 0; overflow:auto; max-height:220px; position:relative; }
+  #studyList { list-style:none; margin:0; padding:0 6px 0 0; overflow:auto; max-height:120px; position:relative; }
+  #studyList li { border-bottom:1px solid #28313c; }
+  #studyList li:last-child { border-bottom:none; }
+  /* Provide subtle scrollbar styling consistent with objectives panel */
+  #studyList::-webkit-scrollbar { width:12px; }
+  #studyList::-webkit-scrollbar-track { background: rgba(15,20,26,0.6); border-radius:8px; }
+  #studyList::-webkit-scrollbar-thumb { background:#60707a; border-radius:8px; border:2px solid rgba(0,0,0,0.12); background-clip: padding-box; }
+  #studyList::-webkit-scrollbar-thumb:hover { background:#78878f; }
   #vocabPanel li { display:flex; justify-content:space-between; align-items:center; font-size:.7rem; padding:4px 0; border-bottom:1px solid #28313c; }
   #vocabPanel li span.word { font-weight:600; }
   #vocabPanel button.small { padding:2px 6px; font-size:.6rem; }
@@ -181,13 +196,13 @@
   <div id="map"></div>
   <div class="hud">
     <div class="panel" id="statusPanel">
-  <h2><button class="collapseToggle" data-panel="statusPanel" title="Collapse/Expand">▾</button> TravelSim <span class="localeCity">Madrid</span> <span id="dayBadge">Day 1 / 5</span></h2>
+  <h2><button class="collapseToggle" data-panel="statusPanel" title="Collapse/Expand">▾</button> TravelSim <span class="localeCity">Madrid</span></h2>
       <div class="panelBody">
   <div style="font-size:.75rem; opacity:.8;">Target Language: <strong id="targetLangLabel">Spanish (es)</strong> | Base: <span id="baseLangLabel">English (en)</span></div>
         <div id="playerPos" style="margin-top:4px; font-size:.7rem; opacity:.7;">Pos: …</div>
         <div id="nearby" style="font-size:.7rem; margin-top:4px;">Nearby: none</div>
         <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
-          <button id="sleepBtn" disabled>Sleep (Hotel)</button>
+          <button id="startConfigBtn" class="secondary" title="Re-open setup">Setup</button>
           <button id="centerBtn" class="secondary">Center Map</button>
           <button id="resetBtn" class="secondary">Reset</button>
           <button id="cancelRouteBtn" class="secondary" title="Cancel active route">Cancel Route</button>
@@ -195,7 +210,7 @@
       </div>
     </div>
     <div class="panel" style="min-width:280px;" id="objectivesPanel">
-      <h3><button class="collapseToggle" data-panel="objectivesPanel" title="Collapse/Expand">▾</button> Objectives</h3>
+      <h3><button class="collapseToggle" data-panel="objectivesPanel" title="Collapse/Expand">▾</button> Objectives (any order)</h3>
       <div class="panelBody">
         <ul id="objectives"></ul>
       </div>
@@ -225,12 +240,46 @@
       <p style="text-align:center; margin-top:30px;"><button id="closeHelp">Close</button></p>
     </div>
   </div>
+  <!-- Initial Setup Overlay -->
+  <div id="setupPane" style="position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:1200; display:flex; align-items:center; justify-content:center;">
+    <div class="panel" style="max-width:600px; width:100%;">
+      <h2 style="margin-top:0;">Start a New Session</h2>
+      <p style="font-size:.75rem; opacity:.8;">Configure your target language, base language, city & country. Objectives will be generated dynamically for the chosen city.</p>
+      <form id="setupForm" style="display:flex; flex-wrap:wrap; gap:10px;">
+        <label style="flex:1 1 100%; font-size:.65rem;">Preset<br>
+          <select id="presetSelect" style="width:100%; padding:6px;">
+            <option value="custom">Custom…</option>
+            <option value="madrid" selected>Madrid (Spanish)</option>
+            <option value="berlin">Berlin (German)</option>
+            <option value="paris">Paris (French)</option>
+            <option value="rome">Rome (Italian)</option>
+            <option value="tokyo">Tokyo (Japanese)</option>
+          </select>
+        </label>
+        <label style="flex:1 1 45%; font-size:.65rem;">City<br><input name="city" value="Madrid" required style="width:100%; padding:6px;"/></label>
+        <label style="flex:1 1 45%; font-size:.65rem;">Country<br><input name="country" value="Spain" required style="width:100%; padding:6px;"/></label>
+        <label style="flex:1 1 45%; font-size:.65rem;">Target Language Name<br><input name="targetLangName" value="Spanish" required style="width:100%; padding:6px;"/></label>
+        <label style="flex:1 1 45%; font-size:.65rem;">Target Language ISO<br><input name="targetLangISO" value="es" required style="width:100%; padding:6px;"/></label>
+        <label style="flex:1 1 45%; font-size:.65rem;">Base Language Name<br><input name="baseLangName" value="English" required style="width:100%; padding:6px;"/></label>
+        <label style="flex:1 1 45%; font-size:.65rem;">Base Language ISO<br><input name="baseLangISO" value="en" required style="width:100%; padding:6px;"/></label>
+        <label style="flex:1 1 45%; font-size:.65rem;">Starting Latitude<br><input name="lat" value="40.491679" required style="width:100%; padding:6px;"/></label>
+        <label style="flex:1 1 45%; font-size:.65rem;">Starting Longitude<br><input name="lon" value="-3.593266" required style="width:100%; padding:6px;"/></label>
+        <label style="flex:1 1 100%; font-size:.65rem;">Approx. Airport/Start Description (optional)<br><input name="airport" placeholder="Adolfo Suárez Madrid-Barajas" style="width:100%; padding:6px;"/></label>
+        <div style="flex:1 1 100%; display:flex; gap:10px; margin-top:4px;">
+          <button type="submit" id="setupSubmitBtn">Start Game</button>
+          <button type="button" id="setupCancelBtn" class="secondary">Use Defaults</button>
+        </div>
+      </form>
+      <div id="setupStatus" style="margin-top:10px; font-size:.65rem; opacity:.8;"></div>
+    </div>
+  </div>
   <div id="chatPanel" class="panel">
     <div id="chatGrab" class="chatGrab" title="Drag to resize chat panel"></div>
     <div id="nearbyTabs" class="nearbyTabs" aria-label="Nearby locations tabs"></div>
     <div id="log"></div>
     <div id="inputRow">
   <input id="msgInput" placeholder="Type your message (Spanish or English)…" />
+      <button id="micBtn" class="secondary" title="Voice dictate (Whisper)">🎤</button>
       <button id="npcBtn">NPC</button>
       <button id="interpreterBtn" class="secondary">Interpreter</button>
       <button id="translateBtn" class="secondary">Translate Last</button>
@@ -253,9 +302,10 @@
       player: { moveMeters: 12, fastMultiplier: 2, proximityMeters: 120 },
       movement: { enableKeyboard: false, routeSpeedMps: 200 }, // walking speed
       routing: { profile: 'foot' },
+      voice: { model: 'whisper-1', endpoint: '/api/whisper', maxSeconds: 45 }, // Whisper config (frontend will POST FormData)
       days: [
         { id:1, objectives:[
-          'Exchange currency at a bank',
+      'Exchange currency at a bank', // Flat objectives list (no day progression)
           'Check-in at a hotel',
           'Sleep to start Day 2'
         ]},
@@ -317,6 +367,46 @@
       baseLangISO: 'en'
     };
 
+    // Preset definitions enabling one-click configuration of the setup form.
+    // Values are intentionally strings (matching input .value usage).
+    const PRESETS = {
+      madrid: {
+        city: 'Madrid', country: 'Spain', targetLangName: 'Spanish', targetLangISO: 'es',
+        baseLangName: 'English', baseLangISO: 'en', lat: '40.491679', lon: '-3.593266',
+        airport: 'Adolfo Suárez Madrid-Barajas'
+      },
+      berlin: {
+        city: 'Berlin', country: 'Germany', targetLangName: 'German', targetLangISO: 'de',
+        baseLangName: 'English', baseLangISO: 'en', lat: '52.366667', lon: '13.503333',
+        airport: 'Berlin Brandenburg Airport'
+      },
+      paris: {
+        city: 'Paris', country: 'France', targetLangName: 'French', targetLangISO: 'fr',
+        baseLangName: 'English', baseLangISO: 'en', lat: '49.009722', lon: '2.547778',
+        airport: 'Charles de Gaulle Airport'
+      },
+      rome: {
+        city: 'Rome', country: 'Italy', targetLangName: 'Italian', targetLangISO: 'it',
+        baseLangName: 'English', baseLangISO: 'en', lat: '41.800277', lon: '12.238888',
+        airport: 'Fiumicino Airport'
+      },
+      tokyo: {
+        city: 'Tokyo', country: 'Japan', targetLangName: 'Japanese', targetLangISO: 'ja',
+        baseLangName: 'English', baseLangISO: 'en', lat: '35.5494', lon: '139.7798',
+        airport: 'Haneda Airport'
+      }
+    };
+    function applyPresetFields(key){
+      const preset = PRESETS[key];
+      if(!preset) return;
+      const form = document.getElementById('setupForm');
+      if(!form) return;
+      Object.entries(preset).forEach(([k,v]) => {
+        const input = form.querySelector(`[name=${k}]`);
+        if(input) input.value = v;
+      });
+    }
+
     function applyLocale(){
       const t = document.getElementById('appTitle');
       if(t) t.textContent = `TravelSim ${LOCALE.city} – Language Learning Map Game`;
@@ -334,11 +424,47 @@
 
     // Communication limit: if player is further than this from a POI, close its chat tab
     const COMM = { maxDistanceMeters: 300 };
+    // Distance after which we reset nearby conversation context to keep chats local
+    const CONTEXT_RESET_METERS = 60;
+    let lastContextAnchor = L.latLng(CONFIG.origin.lat, CONFIG.origin.lon);
+    let conversationEpoch = 0; // increments on context reset; older messages kept visually
+      let gameStarted = false; // track if a session is active to add setup close button
+    // Transient environment context for AI prompts (not stored in conversation threads)
+    function buildEnvironmentContext(selectedPoiId=null){
+      try{
+        const lat = Number(playerLatLng.lat).toFixed(5);
+        const lon = Number(playerLatLng.lng).toFixed(5);
+        const nearby = (currentNearby||[])
+          .filter(p => p._distanceMeters != null && p._distanceMeters <= COMM.maxDistanceMeters)
+          .sort((a,b) => (a._distanceMeters||0) - (b._distanceMeters||0))
+          .slice(0,10)
+          .map(p => {
+            const dist = Math.round(p._distanceMeters||0);
+            const tags = p.tags||{};
+            const type = tags.amenity || tags.shop || tags.tourism || tags.aeroway || p.key || 'poi';
+            const sel = (p.id === selectedPoiId || p._id === selectedPoiId) ? '*SELECTED* ' : '';
+            return `${sel}${p.name || 'Unnamed'} (${type}, ${dist}m)`;
+          });
+        const listStr = nearby.length ? nearby.join('; ') : 'No POIs in range';
+        return `ENVIRONMENT: Player at (${lat}, ${lon}). Nearby: ${listStr}. Provide answers grounded in these surroundings; do not invent places not listed.`;
+      }catch(e){ return `ENVIRONMENT: Error building context (${e.message}).`; }
+    }
+
+    function resetNearbyContext(reason='movement'){
+        // Only reset if at least one non-system message exists in any conversation
+        const hasNonSystem = ([...perPoiConversation.values(), npcConversation, interpreterConversation]).some(conv => conv && conv.some(m => (m.role||'').toLowerCase() !== 'system'));
+        if(!hasNonSystem){
+          // Skip reset silently per requirement (no conversation yet besides system)
+          return;
+        }
+        conversationEpoch++;
+        log('System', `Nearby conversation reset (${reason}).`);
+        lastContextAnchor = L.latLng(playerLatLng.lat, playerLatLng.lng);
+    }
 
     /*****************************************************
      * STATE
      *****************************************************/
-    let currentDayIndex = 0; // 0..4
     let objectivesState = CONFIG.days.map(day => day.objectives.map(o => ({ text:o, done:false })));
     let lastNPCSpanish = '';
     const learnedVocab = new Set();
@@ -356,6 +482,7 @@
      * MAP INIT
      *****************************************************/
     const map = L.map('map', { zoomControl:true }).setView([CONFIG.origin.lat, CONFIG.origin.lon], CONFIG.origin.zoom);
+  if(map && map.createPane){ map.createPane('approxPOI'); map.getPane('approxPOI').style.zIndex = 350; }
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution:'© OpenStreetMap contributors | ODbL'
@@ -373,11 +500,10 @@
     /*****************************************************
      * UI HELPERS
      *****************************************************/
-    const elObjectives = document.getElementById('objectives');
-    const elDayBadge = document.getElementById('dayBadge');
+  const elObjectives = document.getElementById('objectives');
     const elPlayerPos = document.getElementById('playerPos');
     const elNearby = document.getElementById('nearby');
-    const elSleepBtn = document.getElementById('sleepBtn');
+  const elSetupBtn = document.getElementById('startConfigBtn');
     const elCenterBtn = document.getElementById('centerBtn');
     const elResetBtn = document.getElementById('resetBtn');
   const elCancelRouteBtn = document.getElementById('cancelRouteBtn');
@@ -386,9 +512,11 @@
     const elNPCBtn = document.getElementById('npcBtn');
     const elInterpreterBtn = document.getElementById('interpreterBtn');
     const elTranslateBtn = document.getElementById('translateBtn');
+  const elMicBtn = document.getElementById('micBtn');
     const helpToggle = document.getElementById('helpToggle');
     const helpPane = document.getElementById('helpPane');
     const closeHelp = document.getElementById('closeHelp');
+    const presetSelect = document.getElementById('presetSelect');
   const elStudyList = document.getElementById('studyList');
   const elStudySearch = document.getElementById('studySearch');
   const elExportCsvBtn = document.getElementById('exportCsvBtn');
@@ -397,38 +525,23 @@
   const vocabTooltip = document.getElementById('vocabTooltip');
 
     function renderObjectives(){
+      if(!elObjectives) return;
       elObjectives.innerHTML = '';
-      objectivesState[currentDayIndex].forEach((o, idx) => {
+      objectivesState.forEach(o => {
         const li = document.createElement('li');
         li.textContent = o.text;
         if(o.done) li.classList.add('done');
+        li.addEventListener('click', () => markObjective(o.text));
         elObjectives.appendChild(li);
       });
-      elDayBadge.textContent = `Day ${currentDayIndex+1} / 5`;
-      updateSleepAvailability();
     }
 
     function markObjective(text){
-      const list = objectivesState[currentDayIndex];
-      const item = list.find(i => i.text === text);
+      const item = objectivesState.find(i => i.text === text);
       if(item && !item.done){ item.done = true; renderObjectives(); }
     }
 
-    function isSleepObjective(txt){ return /sleep/i.test(txt); }
-    function allNonSleepObjectivesDone(){
-      return objectivesState[currentDayIndex].filter(o => !isSleepObjective(o.text)).every(o => o.done);
-    }
-
-    function updateSleepAvailability(){
-      const nearHotel = currentNearby.find(p => p.key==='hotel');
-      if(nearHotel && allNonSleepObjectivesDone() && currentDayIndex < CONFIG.days.length){
-        elSleepBtn.disabled = false;
-        elSleepBtn.classList.add('ready');
-      } else {
-        elSleepBtn.disabled = true;
-        elSleepBtn.classList.remove('ready');
-      }
-    }
+    // Removed sleep/day mechanics; objectives are free-form
 
       // Use the AI to verify whether an objective has truly been completed based
       // on the assistant's reply and the location/context of the conversation.
@@ -494,17 +607,143 @@
       elLog.scrollTop = elLog.scrollHeight;
     }
 
-    // Verify multiple objectives at once. Returns array of { objective, completed, confidence, reason }
-    async function verifyObjectivesWithAI(poi, assistantText, objectives){
+    /*****************************************************
+     * VOICE INPUT (Whisper)
+     *****************************************************/
+    let mediaRecorder = null;
+    let micChunks = [];
+    let micRecording = false;
+    let micTimerId = null;
+    let micStartedAt = 0;
+  let micAutoStopTimeout = null; // id for auto-stop timeout so we can cancel if user manually stops
+  let micStream = null; // keep reference to active media stream for cleanup
+
+    function updateMicButtonLabel(){
+      if(!elMicBtn) return;
+      if(!micRecording){ elMicBtn.textContent = '🎤'; elMicBtn.classList.remove('recording'); return; }
+      const elapsed = Math.round((Date.now() - micStartedAt)/1000);
+      elMicBtn.textContent = `⏺ ${elapsed}s`;
+    }
+
+    async function startMic(){
+      if(!navigator.mediaDevices || !window.MediaRecorder){
+        log('System','Microphone not supported in this browser.');
+        return;
+      }
       try{
-        const poiName = poi?.name || 'unknown';
-        const poiTags = poi?.tags ? JSON.stringify(poi.tags) : 'none';
-        const dist = poi && poi._distanceMeters != null ? `${poi._distanceMeters}m` : 'unknown';
+        // If a previous recording left a stream or timeout, ensure cleanup before starting a new one
+        if(micAutoStopTimeout){ clearTimeout(micAutoStopTimeout); micAutoStopTimeout = null; }
+        if(micStream){ try{ micStream.getTracks().forEach(t => t.stop()); }catch(e){} micStream = null; }
+        const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+        micChunks = [];
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        mediaRecorder.ondataavailable = e => { if(e.data && e.data.size) micChunks.push(e.data); };
+        mediaRecorder.onstop = () => { finalizeMic(); };
+        mediaRecorder.start();
+        micRecording = true;
+        micStream = stream;
+        micStartedAt = Date.now();
+        elMicBtn.classList.add('recording');
+        updateMicButtonLabel();
+        micTimerId = setInterval(updateMicButtonLabel, 500);
+        // Auto stop after maxSeconds
+        const maxMs = (CONFIG.voice?.maxSeconds || 45) * 1000;
+        micAutoStopTimeout = setTimeout(() => { if(micRecording) stopMic(); }, maxMs);
+      }catch(err){
+        log('System','Mic access denied: '+err.message);
+      }
+    }
+
+    function stopMic(){
+      if(!micRecording) return;
+      micRecording = false;
+      try{ mediaRecorder && mediaRecorder.stop(); }catch(e){}
+      if(micTimerId){ clearInterval(micTimerId); micTimerId = null; }
+      if(micAutoStopTimeout){ clearTimeout(micAutoStopTimeout); micAutoStopTimeout = null; }
+      if(micStream){ try{ micStream.getTracks().forEach(t => t.stop()); }catch(e){} micStream = null; }
+      updateMicButtonLabel();
+    }
+
+    async function finalizeMic(){
+      try{
+        const blob = new Blob(micChunks, { type:'audio/webm' });
+        if(!blob.size){ log('System','No audio captured.'); return; }
+        log('System','Transcribing…');
+        const transcript = await callWhisper(blob, LOCALE.targetLangISO);
+        if(transcript){
+          const cleaned = transcript.trim();
+          const current = elMsg.value.trim();
+          elMsg.value = current ? (current + ' ' + cleaned) : cleaned;
+          elMsg.focus();
+          log('System','Voice input added.');
+        } else {
+          log('System','No transcription returned.');
+        }
+      }catch(err){
+        log('System','Transcription failed: '+err.message);
+      }finally{
+        if(micAutoStopTimeout){ clearTimeout(micAutoStopTimeout); micAutoStopTimeout = null; }
+        updateMicButtonLabel();
+      }
+    }
+
+    if(elMicBtn){
+      elMicBtn.addEventListener('click', () => {
+        if(!micRecording){ startMic(); } else { stopMic(); }
+      });
+    }
+
+    async function callWhisper(audioBlob, languageISO){
+      try{
+        // Prefer backend proxy endpoint for security; direct OpenAI call requires exposing key (not recommended client-side)
+        const endpoint = CONFIG.voice?.endpoint || '/api/whisper';
+        const url = new URL(endpoint, API_BASE).toString();
+        const fd = new FormData();
+        fd.append('file', audioBlob, 'speech.webm');
+        fd.append('model', CONFIG.voice?.model || 'whisper-1');
+        if(languageISO) fd.append('language', languageISO);
+        const res = await fetch(url, { method:'POST', body: fd });
+        if(!res.ok){ throw new Error('Whisper proxy error '+res.status); }
+        const data = await res.json().catch(()=>({}));
+        return data.text || data.transcript || data.result || '';
+      }catch(err){ console.warn('callWhisper failed', err); return ''; }
+    }
+
+    // Verify multiple objectives at once. Returns array of { objective, completed, confidence, reason }
+    async function verifyObjectivesWithAI(poi, assistantText, objectives, recentContext=""){
+      try{
+        // Gather POI + environment context (fallback to nearest POI if none passed)
+        let poiObj = poi;
+        if(!poiObj && Array.isArray(currentNearby) && currentNearby.length){ poiObj = currentNearby[0]; }
+        const envContext = buildEnvironmentContext(poiObj?.id || poiObj?._id || null);
+        const poiName = poiObj?.name || 'unknown';
+        const poiTags = poiObj?.tags ? JSON.stringify(poiObj.tags) : 'none';
+        const dist = poiObj && poiObj._distanceMeters != null ? `${poiObj._distanceMeters}m` : 'unknown';
         const playerLat = playerLatLng?.lat?.toFixed ? playerLatLng.lat.toFixed(5) : 'unknown';
         const playerLon = playerLatLng?.lng?.toFixed ? playerLatLng.lng.toFixed(5) : 'unknown';
-        const sys = `You are a game adjudicator. Given an assistant/interpreter reply and a list of candidate objectives for the current day, return a JSON array where each element has keys: objective (string), completed (true/false), confidence (0..1), reason (short string). Be conservative; only mark completed if you're reasonably sure.`;
-        const user = `POI: ${poiName}\nPOI tags: ${poiTags}\nPOI distance from player: ${dist}\nPlayer coords: ${playerLat},${playerLon}\nAssistant reply: ${assistantText}\n\nCandidate objectives:\n${objectives.map(o=>`- ${o}`).join('\n')}`;
-        const msgs = [{role:'system', content: sys}, {role:'user', content: user}];
+        // Pleasantry / trivial reply guard (keep – minimal regex, not domain heuristics)
+        const PLEASANTRY_RX = /^(\s*(gracias|de\s+nada|hola|buenos?\s+d[ií]as|buenas?\s+tardes|buenas?\s+noches)([!.¡¿]?\s*)?)+$/i;
+        const cleanedAssistant = (assistantText||'').trim();
+        if(!cleanedAssistant || PLEASANTRY_RX.test(cleanedAssistant) || cleanedAssistant.length < 6){
+          return objectives.map(o => ({ objective:o, completed:false, confidence:0, reason:'pleasantry-or-empty' }));
+        }
+        // Strengthened adjudicator prompt (no hard-coded keyword rules; rely on semantic evidence + explicit fulfillment markers)
+        const sys = `You are a STRICT game adjudicator. Output ONLY a JSON array. Each element: {"objective":string,"completed":true|false,"confidence":0..1,"reason":string}.
+Rules:
+1. Be highly conservative.
+2. Only mark completed if the assistant reply contains explicit fulfillment signals (e.g., for a price objective: an actual price figure or confirmation of clarified price; for a ticket objective: explicit confirmation of obtaining/purchasing; for directions: concrete directional or distance guidance; for menu requests: explicit availability or description; etc.).
+3. Mere offers, suggestions, future tense, gratitude, generic help, or partial info are NOT completion.
+4. If evidence is partial or ambiguous, completed=false.
+5. Confidence ≥ 0.9 ONLY when evidence is unequivocal.
+6. Do not infer success if the reply lacks direct semantic alignment.
+7. Never hallucinate objectives or details.
+Return strictly the JSON array; no commentary.`;
+        const recentBlock = recentContext ? `Recent conversation (latest turns):\n${recentContext}\n\n` : '';
+        const user = `${envContext}\n\n${recentBlock}POI: ${poiName}\nPOI tags: ${poiTags}\nPOI distance from player: ${dist}\nPlayer coords: ${playerLat},${playerLon}\nAssistant reply: ${assistantText}\n\nCandidate objectives:\n${objectives.map(o=>`- ${o}`).join('\n')}`;
+        const msgs = [
+          {role:'system', content: sys},
+          {role:'user', content: user}
+        ];
         const aiResp = await callOpenAI(msgs);
         if(!aiResp) return objectives.map(o => ({ objective: o, completed:false, confidence:0, reason:'no-ai-response' }));
         // Helper: strip code fences and extract first JSON array substring
@@ -533,47 +772,109 @@
           try{ return JSON.parse(slice); }catch(e){ return null; }
         }
         let parsed = extractJSON(aiResp);
+        let resultsArr;
         if(Array.isArray(parsed)){
-          // Normalize elements; ensure booleans respected exactly
-          return parsed.map(p => ({
+          resultsArr = parsed.map(p => ({
             objective: typeof p.objective === 'string' ? p.objective : '',
-            completed: p.completed === true, // only true if explicitly true
+            completed: p.completed === true,
             confidence: Math.max(0, Math.min(1, typeof p.confidence === 'number' ? p.confidence : parseFloat(p.confidence||0) || 0)),
             reason: typeof p.reason === 'string' ? p.reason : ''
           }));
+        } else {
+          // Regex fallback (structure only; not domain heuristics)
+          const objRegex = /{[^}]*?"objective"\s*:\s*"([^"]+)"[^}]*?"completed"\s*:\s*(true|false)[^}]*?("confidence"\s*:\s*([0-9.]+))?[^}]*?("reason"\s*:\s*"([^"]*)")?[^}]*?}/g;
+          const matches = []; let m;
+          while((m = objRegex.exec(aiResp)) !== null){
+            matches.push({ objective: m[1], completed: m[2] === 'true', confidence: Math.max(0, Math.min(1, parseFloat(m[4]||'0'))), reason: m[6] || '' });
+          }
+          resultsArr = matches.length ? matches : objectives.map(o => ({ objective:o, completed:false, confidence:0, reason:'unparsed-response' }));
         }
-        // Regex fallback: attempt to capture each object block to read completed flag safely.
-        const objRegex = /{[^}]*?"objective"\s*:\s*"([^"]+)"[^}]*?"completed"\s*:\s*(true|false)[^}]*?("confidence"\s*:\s*([0-9.]+))?[^}]*?("reason"\s*:\s*"([^"]*)")?[^}]*?}/g;
-        const matches = []; let m;
-        while((m = objRegex.exec(aiResp)) !== null){
-          matches.push({ objective: m[1], completed: m[2] === 'true', confidence: Math.max(0, Math.min(1, parseFloat(m[4]||'0'))), reason: m[6] || '' });
-        }
-        if(matches.length){ return matches; }
-        // Final safe fallback: nothing parsed; return all incomplete
-        return objectives.map(o => ({ objective: o, completed:false, confidence:0, reason:'unparsed-response' }));
+        // Post-filter: enforce high confidence threshold without hard-coded semantic keyword rules
+        resultsArr.forEach(r => {
+          if(r.completed && r.confidence < 0.9){
+            r.reason = r.reason || 'confidence-below-0.9';
+            r.completed = false;
+          }
+        });
+        return resultsArr;
       }catch(err){ console.warn('verifyObjectivesWithAI failed', err); return objectives.map(o => ({ objective: o, completed:false, confidence:0, reason:'error' })); }
     }
 
-    // Ask AI to generate a trip objectives plan (JSON array of days with objectives) before scenario init.
-    async function generateTripObjectives(){
+    // Generate a flat, city-specific objective list (JSON array of strings) after user setup.
+    async function generateCityObjectives(){
       try{
-  const sys = `You are a trip planner assistant. Generate a 5-day objectives plan for a language-learning trip in ${LOCALE.city}. Respond ONLY with strict JSON: { days: [ { id: 1, objectives: ["...","..."] }, ... ] }. Each day should have 3-5 concise objective strings focusing on travel actions and learning tasks (e.g., 'Exchange currency at a bank', 'Check-in at a hotel', 'Order coffee in ${LOCALE.targetLangName}', 'Learn 3 new words').`;
-  const user = `Produce objectives appropriate for a beginner-to-intermediate ${LOCALE.targetLangName} learner visiting ${LOCALE.city}. Do not include explanations.`;
+        const sys = `You design practical travel language objectives. Generate 10-14 concise, immediately achievable, single-conversation tasks in ${LOCALE.city}, ${LOCALE.country}. Each task must be completable in ONE brief interaction (chat) and not require multi-hour activities, classes, events, meetups, or multi-step planning. Focus on: banking, hotel, restaurant/cafe, shop/market, pharmacy/medical, transit (metro/bus/train/airport), asking directions, buying tickets, ordering food/drink, clarifying prices, simple cultural etiquette questions. Avoid tasks like cooking classes, guided tours scheduling, workshops, language exchange groups, enrolling, attending events, meeting strangers later, studying for hours, or anything needing multiple sessions. Respond ONLY with strict JSON array of strings: ["objective 1", "objective 2", ...]. No explanations, no objects, no extra text.`;
+        const user = `Target language: ${LOCALE.targetLangName} (${LOCALE.targetLangISO}). Base: ${LOCALE.baseLangName}. City: ${LOCALE.city}. Output only JSON array; keep each objective under ~85 characters.`;
         const msgs = [{role:'system', content: sys}, {role:'user', content: user}];
         const aiResp = await callOpenAI(msgs);
         if(!aiResp) return null;
-        try{
-          const parsed = JSON.parse(aiResp);
-          if(parsed && Array.isArray(parsed.days)){
-            // Replace CONFIG.days and rebuild objectivesState
-            CONFIG.days = parsed.days.map(d => ({ id: d.id, objectives: d.objectives }));
-            objectivesState = CONFIG.days.map(day => day.objectives.map(o => ({ text:o, done:false })));
-            renderObjectives();
-            log('System', 'Objectives generated by AI and loaded.');
-            return parsed.days;
+        let arr = null;
+        // Helper to extract first JSON array substring even if trailing characters exist
+        function extractArray(raw){
+          if(!raw) return null;
+          let txt = raw.trim();
+          // Strip outer fences
+          if(/^```/.test(txt)) txt = txt.replace(/^```[a-zA-Z]*\n?/, '').replace(/```$/, '').trim();
+          // Remove internal fenced blocks if any
+          txt = txt.replace(/```[a-zA-Z]*\n([\s\S]*?)```/g, '$1');
+          const start = txt.indexOf('[');
+          if(start === -1) return null;
+          let depth = 0, end = -1;
+          for(let i=start;i<txt.length;i++){
+            const c = txt[i];
+            if(c==='[') depth++;
+            else if(c===']'){ depth--; if(depth===0){ end = i; break; } }
           }
-        }catch(e){ console.warn('generateTripObjectives parse failed', e, aiResp); }
-      }catch(err){ console.warn('generateTripObjectives failed', err); }
+            if(end === -1) return null;
+          let slice = txt.slice(start, end+1);
+          // Remove any trailing commas before closing bracket
+          slice = slice.replace(/,\s*]/, ']');
+          try { return JSON.parse(slice); } catch(err){ return null; }
+        }
+        // Attempt direct parse first
+        try { arr = JSON.parse(aiResp); } catch(e){ arr = extractArray(aiResp); }
+        if(!Array.isArray(arr)){
+          // Try cleaned parse again if still null
+          const cleaned = aiResp.replace(/^```json\n?/,'').replace(/```$/,'').trim();
+          try { arr = JSON.parse(cleaned); } catch(e2){ if(!arr) arr = extractArray(cleaned); }
+        }
+        if(Array.isArray(arr)){
+          // Sanitize: ensure strings only, trim, drop empties & duplicates
+          const seen = new Set();
+          arr = arr.map(o => typeof o === 'string' ? o.trim() : '').filter(o => o && !seen.has(o) && (seen.add(o), true));
+          // Enforce length bounds (truncate >20, pad? we won't pad; if <8 accept anyway)
+          if(arr.length > 20) arr = arr.slice(0,20);
+          // Post-filter: remove disallowed multi-session / non-single-conversation patterns
+          const bannedPatterns = [
+            /class|curso|workshop|taller/i,
+            /language exchange|intercambio/i,
+            /meetup|group|grupo/i,
+            /museum tour|tour guiado|guided tour/i,
+            /cooking|cook|chef/i,
+            /lesson|lección/i,
+            /schedule|reservar para mañana|book .* later/i,
+            /attend|asistir/i,
+            /plan .* itinerary/i,
+            /study for|estudiar durante/i
+          ];
+          arr = arr.filter(o => !bannedPatterns.some(rx => rx.test(o)));
+          // Strengthen to actionable transactional/dialogue style: ensure contains a verb like exchange, order, ask, buy, check, get
+          const verbWhitelist = /(exchange|order|ask|buy|purchase|check|get|pay|confirm|locate|find|request|greet|thank|clarify|book|obtain)/i;
+          arr = arr.filter(o => verbWhitelist.test(o));
+          // Final safety: if filtering removed too many (<8), fall back to original unfiltered list limited to whitelist of categories inferred
+          if(arr.length < 8 && seen.size){
+            const original = [...seen].filter(s => verbWhitelist.test(s)).slice(0,12);
+            if(original.length >= 8) arr = original;
+          }
+        }
+        if(Array.isArray(arr)){
+          CONFIG.objectives = arr;
+          objectivesState = CONFIG.objectives.map(o => ({ text:o, done:false }));
+          renderObjectives();
+          log('System','Objectives generated for ' + LOCALE.city + '.');
+          return arr;
+        }
+      }catch(err){ console.warn('generateCityObjectives failed', err); }
       return null;
     }
 
@@ -626,6 +927,54 @@
 
     renderObjectives();
 
+    // Re-open setup modal when user clicks Setup; prefill with current locale & origin
+    if(elSetupBtn){
+      elSetupBtn.addEventListener('click', () => {
+        const pane = document.getElementById('setupPane');
+        const form = document.getElementById('setupForm');
+        if(pane){ pane.style.display = 'flex'; }
+          // Inject close (X) button when reopening after game start
+          if(pane && gameStarted){
+            if(!pane.querySelector('.setupCloseBtn')){
+              const btn = document.createElement('button');
+              btn.type = 'button';
+              btn.className = 'setupCloseBtn';
+              btn.textContent = '×';
+              btn.title = 'Close setup without resetting the session';
+              Object.assign(btn.style, { position:'absolute', top:'8px', right:'12px', background:'transparent', color:'#fff', fontSize:'28px', border:'none', cursor:'pointer', lineHeight:'24px' });
+              btn.addEventListener('click', () => { pane.style.display = 'none'; });
+              pane.appendChild(btn);
+            }
+          }
+        if(form){
+          const setVal = (name, val) => { const inp = form.querySelector(`[name=${name}]`); if(inp) inp.value = val; };
+          setVal('city', LOCALE.city);
+          setVal('country', LOCALE.country);
+          setVal('targetLangName', LOCALE.targetLangName);
+          setVal('targetLangISO', LOCALE.targetLangISO);
+          setVal('baseLangName', LOCALE.baseLangName);
+          setVal('baseLangISO', LOCALE.baseLangISO);
+          setVal('lat', playerLatLng.lat.toFixed(6));
+          setVal('lon', playerLatLng.lng.toFixed(6));
+          // Try to auto-select matching preset
+          if(presetSelect){
+            const matchKey = Object.keys(PRESETS).find(k => PRESETS[k].city === LOCALE.city && PRESETS[k].targetLangISO === LOCALE.targetLangISO);
+            presetSelect.value = matchKey || 'custom';
+          }
+          const status = document.getElementById('setupStatus'); if(status) status.textContent = 'Adjust values and click Start Game to regenerate objectives.';
+        }
+      });
+    }
+
+    // Hook preset dropdown change -> autofill form fields (does not auto-start game)
+    if(presetSelect){
+      presetSelect.addEventListener('change', () => {
+        const val = presetSelect.value;
+        if(val === 'custom' || !val) return;
+        applyPresetFields(val);
+      });
+    }
+
   // Nearby tab state
   const nearbyTabState = { selectedId: null }; // store dynamic POI id or null for general
     const perPoiConversation = new Map(); // poiId -> conversation array
@@ -637,7 +986,7 @@
 
     // Append a message to a thread (poiId=null -> general), store it, and render if that thread is active
     function addMessageToThread(role, text, poiId=null){
-      const entry = { role, content: text, ts: Date.now() };
+      const entry = { role, content: text, ts: Date.now(), epoch: conversationEpoch };
       if(poiId){
         const conv = perPoiConversation.get(poiId) || [];
         conv.push(entry); if(conv.length > 200) conv.splice(0, conv.length - 200);
@@ -726,26 +1075,26 @@
       const nameLower = (poi.name||'').toLowerCase();
       // Bank / currency exchange
       if(poi?.key === 'bank' || /bank|banco|cambio/i.test(nameLower) || (poi?.tags && ((poi.tags.amenity||'').toLowerCase().includes('bank') || (poi.tags.shop||'').toLowerCase().includes('bureau_de_change')))){
-  return `You are a bank teller at a branch in ${LOCALE.city}. Assist the customer with currency exchange, withdrawals, and basic account inquiries in ${LOCALE.targetLangName}. Keep responses concise and stay in character.`;
+  return `You are a bank teller at a branch in ${LOCALE.city}. Assist the customer with currency exchange, withdrawals, and basic account inquiries in ${LOCALE.targetLangName}. Avoid ${LOCALE.baseLangName} unless clarifying a single word briefly. Keep responses concise and stay in character.`;
       }
       // Hotel / lodging
       if(tourism.includes('hotel') || /hotel/i.test(poi.name)){
-  return `You are the hotel front desk agent in ${LOCALE.city}. Greet the guest politely in ${LOCALE.targetLangName}, ask for reservation details and stay in character. Don't ask for personal information. Keep responses concise and helpful.`;
+  return `You are the hotel front desk agent in ${LOCALE.city}. Greet the guest politely in ${LOCALE.targetLangName}, ask for reservation details and stay in character. Don't ask for personal information. Avoid ${LOCALE.baseLangName} unless clarifying a single word. Keep responses concise and helpful.`;
       }
       // Restaurant / cafe
       if(['restaurant','cafe','bar','fast_food'].includes(amenity) || /cafe|bar|restaurante/i.test(poi.name)){
-  return `You are a restaurant/cafe staff member. Act in ${LOCALE.targetLangName}, take orders, suggest menu items, and be friendly. Keep responses concise.`;
+  return `You are a restaurant/cafe staff member. Act in ${LOCALE.targetLangName}, take orders, suggest menu items, and be friendly. Avoid ${LOCALE.baseLangName} unless giving a one-word clarification. Keep responses concise.`;
       }
       // Shop
       if(shop || /tienda|shop|supermercado|bakery|panader/i.test(poi.name)){
-  return `You are a shopkeeper in ${LOCALE.city}. Help the customer, discuss prices, accept payment, and offer small conversational phrases in ${LOCALE.targetLangName}, as you only know ${LOCALE.targetLangName} (${LOCALE.targetLangISO.toUpperCase()}). Keep responses concise and role-play realistic store interactions.`;
+  return `You are a shopkeeper in ${LOCALE.city}. Help the customer, discuss prices, accept payment, and offer small conversational phrases in ${LOCALE.targetLangName}. Avoid ${LOCALE.baseLangName} unless clarifying a single word. Keep responses concise and role-play realistic store interactions.`;
       }
       // Medical: differentiate hospitals and clinics
       if(['hospital','doctors','healthcare','medical_centre','health_post'].includes(amenity) || /hospital|centro de salud|hospitalaria|hospitalidad/i.test(poi.name)){
-  return `You are staff at a hospital in ${LOCALE.city}. You are familiar with admissions, triage, and directing patients within a hospital. Speak in ${LOCALE.targetLangName}, be compassionate, provide next steps for care in-hospital, and remain in character; do not tell the user to \"call\" emergency services since they are already at a hospital. Keep responses concise and professional.`;
+  return `You are staff at a hospital in ${LOCALE.city}. You are familiar with admissions, triage, and directing patients within a hospital. Speak in ${LOCALE.targetLangName}, be compassionate, provide next steps for in-hospital care, and remain in character; do not tell the user to "call" emergency services since they are already present. Avoid ${LOCALE.baseLangName} unless clarifying a single word. Keep responses concise and professional.`;
       }
       if(['clinic','health_post'].includes(amenity) || /clinic|clínica|consultorio/i.test(poi.name)){
-  return `You are a medical clinic staff member in ${LOCALE.city}. Respond in ${LOCALE.targetLangName}, ask about symptoms, offer basic triage advice, and direct the user to emergency services if necessary. Do not provide prescriptions; keep responses concise and compassionate.`;
+  return `You are a medical clinic staff member in ${LOCALE.city}. Respond in ${LOCALE.targetLangName}, ask about symptoms, offer basic triage advice, and direct the user to emergency services if necessary. Avoid ${LOCALE.baseLangName} unless clarifying a single word. Do not provide prescriptions; keep responses concise and compassionate.`;
       }
       // Airport / airline
       if(aeroway.includes('aerodrome') || aeroway.includes('airport') || /aeropuerto|airport/i.test(poi.name)){
@@ -808,7 +1157,7 @@
   if(!studyFiltered.length){ const li = document.createElement('li'); li.textContent='(No saved words yet)'; elStudyList.appendChild(li); }
   // Enforce a stable max-height and scrolling behavior so the study list always
   // shows a scrollbar when content exceeds the visible area.
-  elStudyList.style.maxHeight = '220px';
+  elStudyList.style.maxHeight = '120px';
   elStudyList.style.overflow = 'auto';
   // toggle overflowing class for faux scrollbar indicator (measure after styles applied)
   if(elStudyList.scrollHeight > elStudyList.clientHeight) elStudyList.classList.add('overflowing'); else elStudyList.classList.remove('overflowing');
@@ -982,6 +1331,21 @@
       dynamicPOIs.forEach(d => {
         if(visibleIds.has(d.id)) showDynamicPOI(d); else hideDynamicPOI(d);
       });
+      // Remove approximate placeholders when their precise counterpart becomes visible
+      try {
+        const preciseNames = new Set(
+          visible.filter(c => c.data && c.data.confidence === 'precise')
+                 .map(c => (c.data.name||'').toLowerCase().trim())
+        );
+        if(preciseNames.size){
+          const toRemove = dynamicPOIs.filter(p => p.confidence === 'approx' && p._approxOf && preciseNames.has(p._approxOf));
+          if(toRemove.length){
+            toRemove.forEach(p => { try{ hideDynamicPOI(p); }catch(e){} });
+            dynamicPOIs = dynamicPOIs.filter(p => !toRemove.includes(p));
+            console.debug('Removed approximate placeholders:', toRemove.map(p=>p.name));
+          }
+        }
+      }catch(e){ console.debug('Approx placeholder removal failed', e); }
 
   // currentNearby should be an array of the nearby POI data objects ordered by closest first
   currentNearby = visible.map(c => { c.data._distanceMeters = Math.round(c.dist); if(!c.data.id) c.data.id = c.data.id || c.data._id || c.data.key || c.data.name; return c.data; });
@@ -1024,7 +1388,7 @@
       } else {
         elNearby.textContent = 'Nearby: none';
       }
-      updateSleepAvailability();
+  // Sleep/day system removed; no availability update needed.
     }
     updateNearby();
 
@@ -1037,19 +1401,9 @@
       log('System', `Discovered: ${poi.name}`);
     }
 
-    // Initial dynamic load: generate objectives (with timeout) then query OSM around starting position
-    (async function initDynamicLoad(){
+    // Initial dynamic load: only query OSM; objectives generated after user setup
+    (function initDynamicLoad(){
       try{
-        // Try to generate trip objectives before initializing the scenario UI.
-        // Use a short timeout so a slow/failed AI proxy won't block the game startup forever.
-        try{
-          const genPromise = generateTripObjectives();
-          const timeoutPromise = new Promise((res) => setTimeout(() => res(null), 10000)); // 10s fallback
-          const genResult = await Promise.race([genPromise, timeoutPromise]);
-          if(genResult === null){ console.warn('generateTripObjectives timed out (10s). Proceeding with default CONFIG.'); }
-        }catch(e){ console.warn('generateTripObjectives failed', e); }
-
-        // Continue with initial OSM load and update Nearby UI
         queryNearbyOSMPOIs(playerLatLng.lat, playerLatLng.lng, OSM.radiusMeters)
           .then(added => { if(added && added.length) updateNearby(); })
           .catch(e => console.warn('Initial OSM load failed', e));
@@ -1065,10 +1419,14 @@
       async function verifyAndApplyMultiple(candidates){
         if(!candidates || !candidates.length) return;
         try{
-          const results = await verifyObjectivesWithAI(poi, assistantText, candidates);
+          // Build a recent conversation snippet (last 6 turns) for added adjudication context.
+          let conv = poi ? (perPoiConversation.get(poi.id) || []) : generalConversation;
+          const recent = conv.slice(-6).map(m => `${m.role}: ${m.content}` ).join('\n');
+          const results = await verifyObjectivesWithAI(poi, assistantText, candidates, recent);
           results.forEach(r => {
             const LOG_CONF_THRESHOLD = 0.3;
-            if(r.completed && r.confidence >= 0.7){
+            // Updated completion threshold to >=0.8 (stricter, no keyword heuristics)
+            if(r.completed && r.confidence >= 0.8){
               markObjective(r.objective);
               if(poi){ poi._discovered = true; poi._unlocked = true; showDynamicPOI(poi); }
               log('System', `Objective updated: ${r.objective}`);
@@ -1085,8 +1443,9 @@
 
       // For fully-dynamic AI adjudication, verify all current-day incomplete objectives against the assistant reply.
       try{
-        const dayObjs = objectivesState[currentDayIndex].filter(o => !o.done).map(o => o.text);
-        if(dayObjs && dayObjs.length){ await verifyAndApplyMultiple(dayObjs); }
+        // Use all incomplete objectives (flat list, day system removed) rather than legacy day grouping.
+        const incomplete = objectivesState.filter(o => !o.done).map(o => o.text);
+        if(incomplete && incomplete.length){ await verifyAndApplyMultiple(incomplete); }
       }catch(e){ console.warn('Objective verification failed', e); }
     }
 
@@ -1177,6 +1536,11 @@
       playerMarker.setLatLng(playerLatLng);
       elPlayerPos.textContent = `Pos: ${playerLatLng.lat.toFixed(5)}, ${playerLatLng.lng.toFixed(5)}`;
       updateNearby();
+      // Reset chat context if we've moved far from last anchor (start a new local session)
+      try {
+        const dist = lastContextAnchor.distanceTo(playerLatLng);
+        if(dist > CONTEXT_RESET_METERS){ resetNearbyContext('moved '+Math.round(dist)+'m'); }
+      } catch(e){}
       // Trigger OSM POI fetch when we've moved a decent distance from last query center
       try {
         // only query if we're outside any previously fetched area by trigger threshold
@@ -1388,7 +1752,6 @@
       try {
         const url = new URL('/api/chat', API_BASE).toString();
         // Build a short, neutral system context about player location and objectives to help the AI respond appropriately.
-        // Important: do NOT assume the player is arriving, leaving, or actively performing objectives unless they state so.
         let locationContext = '';
         try {
           const lat = playerLatLng?.lat?.toFixed ? playerLatLng.lat.toFixed(5) : 'unknown';
@@ -1400,18 +1763,19 @@
           locationContext = `Player location: lat=${lat}, lon=${lon}; Nearest: ${nearest}; Nearby: ${nearbyNames}; Day: ${day}; Day objectives (background only): ${objList}`;
         } catch(e){ locationContext = 'Player location: unknown'; }
 
-        const systemContextMsg = `Scene context (background only): ${locationContext}. IMPORTANT: Do not infer the player's intent to arrive or leave, and do not assume they are performing any objective unless they explicitly say so.`;
+  // Refined background context: provide environment facts only; no "unknown" if we have coordinates.
+  const systemContextMsg = `ENVIRONMENT: ${locationContext}. Use these details when helpful. Avoid generic greetings; reference nearest POI when appropriate and ask one clarifying question rather than open-ended filler.`;
         // If the caller already supplied a system prompt (e.g., POI role prompt), don't prepend another system message
         // because repeated system messages can confuse or bloat the payload. Instead, append a concise background
         // context as a normal user message so the model still sees current location info without resending role instructions.
         const hasSystemInMessages = (messages||[]).some(m => m && m.role === 'system');
         let augmentedMessages;
         if(hasSystemInMessages){
-          // Include a short background context as a lightweight user message
-          const bgMsg = { role: 'user', content: `BACKGROUND: ${systemContextMsg}` };
-          augmentedMessages = [...messages, bgMsg];
+          // Don't add misleading "BACKGROUND" user message; instead append concise system context once
+          // Ensure we haven't already injected an ENVIRONMENT context (check content substring)
+          const alreadyEnv = messages.some(m => m.role==='system' && /ENVIRONMENT:/i.test(m.content||''));
+          augmentedMessages = alreadyEnv ? messages : [...messages, { role:'system', content: systemContextMsg }];
         } else {
-          // No system prompt provided by caller — send the context as system role (once)
           augmentedMessages = [{ role:'system', content: systemContextMsg }, ...messages];
         }
 
@@ -1446,14 +1810,15 @@
     }
 
     function pushLimited(arr, item){
+      if(item && item.epoch == null) item.epoch = conversationEpoch;
       arr.push(item); if(arr.length > MAX_CONTEXT) arr.splice(0, arr.length - MAX_CONTEXT);
     }
 
     // Map stored thread entries (which use friendly role labels like 'You', 'NPC', 'Interpreter', 'System')
     // to OpenAI-compatible roles: 'user', 'assistant', 'system'.
     function threadToApiMessages(conv){
-      // Filter out stored 'system' messages from conversation history to avoid duplicating system prompts
-      const filtered = (conv||[]).filter(m => !(m && (m.role||'').toString().toLowerCase() === 'system'));
+      // Include messages from current epoch; treat missing epoch as current (legacy entries)
+      const filtered = (conv||[]).filter(m => m && (m.epoch == null || m.epoch === conversationEpoch) && (m.role||'').toString().toLowerCase() !== 'system');
       return filtered.map(m => {
         const r = (m.role||'').toString().toLowerCase();
         let apiRole = 'user';
@@ -1466,18 +1831,8 @@
       }).filter(m => m && m.content != null);
     }
 
-    function isEnglishMessage(msg){
-      const lower = msg.toLowerCase();
-      const spanishHints = /(¿|¡|ñ|á|é|í|ó|ú|\bque\b|\bcomo\b|\buna?\b|\bpor\b|\bpara\b|\bcon\b|\bgracias\b)/;
-      const englishStop = ['the','and','is','are','to','of','in','it','for','on', 'you'];
-      const words = lower.match(/[a-zA-Z]+/g) || [];
-      const englishCount = words.filter(w => englishStop.includes(w)).length;
-      const ratio = words.length ? englishCount / words.length : 0;
-      return !spanishHints.test(lower) && ratio > 0.2; // heuristic threshold
-    }
-
     async function npcResponse(userMsg, poiId=null){
-  const systemPrompt = `You are a friendly local in ${LOCALE.city} helping a traveler practice ${LOCALE.targetLangName}. Stay mostly in ${LOCALE.targetLangName} (${LOCALE.targetLangISO.toUpperCase()}). Provide concise responses. If giving directions, you may include coordinates or cardinal + distance steps. Avoid ${LOCALE.baseLangName} unless clarifying a ${LOCALE.targetLangName} word briefly with a single ${LOCALE.baseLangName} word.`;
+  const systemPrompt = `You are a friendly local in ${LOCALE.city} helping a traveler. Speak only in ${LOCALE.targetLangName} (${LOCALE.targetLangISO.toUpperCase()}). Use nearby POIs if relevant. First reply must NOT be a generic greeting alone; include a location-grounded helpful offer (reference nearest relevant POI if plausible) AND exactly one concise clarifying question about what they need. Avoid ${LOCALE.baseLangName} unless clarifying a single word.`;
   const conv = poiId ? (perPoiConversation.get(poiId) || []) : npcConversation;
   // Avoid duplicate user message insert if log('You', ...) already recorded it
   const last = conv[conv.length-1];
@@ -1487,53 +1842,109 @@
   }
   const poi = poiId ? dynamicPOIs.find(d => d.id == poiId) : null;
   const poiPrompt = poi ? getPOISystemPrompt(poi) : systemPrompt;
-  const history = [{role:'system', content: poiPrompt}, ...threadToApiMessages(conv)];
-      if(isEnglishMessage(userMsg)){
-        const resp = 'Lo siento, no entiendo bien el inglés aquí. ¿Puedes escribirlo en español, por favor?';
-        lastNPCSpanish = resp;
-        log('NPC', resp);
-        checkNewWords(resp);
-        return;
-      }
+  const envCtx = buildEnvironmentContext(poiId);
+  let history = [{role:'system', content: poiPrompt}, {role:'system', content: envCtx}, ...threadToApiMessages(conv)];
+  // If no prior dialogue (no user/assistant turns this epoch), add priming user hint to avoid generic greeting
+  const hasDialogue = conv.some(m => ['you','user','npc','assistant'].includes((m.role||'').toLowerCase()));
+  if(!hasDialogue){
+    history.push({ role:'user', content:`Please respond with a location-grounded helpful offer plus one clarifying question. Avoid a standalone greeting.` });
+  }
   const ai = await callOpenAI(history);
       let resp = ai;
-      if(!resp){
-        // Fallback stub
+      if(!resp || !resp.trim()){
+        const nearestName = (currentNearby && currentNearby[0]) ? currentNearby[0].name : 'este lugar';
         const templates = [
-          'Entiendo. ¿Puedes explicar más sobre esto?',
-          'Interesante. ¿Qué te parece Madrid hasta ahora?',
-          'Practiquemos vocabulario. Dime una palabra nueva en español.'
+          `Estoy aquí cerca de ${nearestName}. ¿Necesitas algo específico? (direcciones, cajero, precios?)`,
+          `Puedo ayudarte con algo cerca de ${nearestName}. ¿Qué buscas exactamente?`,
+          `¿Qué necesitas ahora mismo? Puedo dar indicaciones o ayudarte con vocabulario local.`
         ];
         resp = sample(templates);
       }
   // Add assistant reply using unified log() so it's recorded once in the visible log and the active thread
   lastNPCSpanish = resp;
   log('NPC', resp);
+  pushLimited(conv, {role:'assistant', content: resp}); if(poiId) perPoiConversation.set(poiId, conv);
     checkNewWords(resp);
     // Detect outcomes (e.g., hotel check-in completed) from assistant reply and apply game effects (await verifier)
     try{ const poiObj = poiId ? dynamicPOIs.find(d => d.id == poiId) : null; await detectPOIOutcome(poiObj, resp); }catch(e){}
     }
 
     async function interpreterResponse(userMsg, poiId=null){
-  const systemPrompt = `You are an interpreter helping a user learn ${LOCALE.targetLangName}. Respond in clear ${LOCALE.baseLangName}. Provide brief grammatical explanations when asked. If user pastes ${LOCALE.targetLangName}, translate then explain one key grammar or vocab point.`;
+  const systemPrompt = `You are an interpreter and tour guide helping a user learn ${LOCALE.targetLangName} and travel. Stay in character for the scenario. Respond primarily in ${LOCALE.baseLangName} with any example ${LOCALE.targetLangName} phrases clearly shown first. If user pastes ${LOCALE.targetLangName}, translate then explain one key grammar or vocab point. If user asks "How do I say/ask ..." or "How do I ask if ..." provide 1-2 natural ${LOCALE.targetLangName} sentence options (bold them) and then a brief explanation (max 2 sentences) in ${LOCALE.baseLangName}. Avoid generic acknowledgements; answer directly.`;
       const conv = poiId ? (perPoiConversation.get(poiId) || []) : interpreterConversation;
       const last = conv[conv.length-1];
       if(!(last && (last.role||'').toString().toLowerCase() === 'you' && last.content === userMsg) && !(last && (last.role||'').toString().toLowerCase() === 'user' && last.content === userMsg)){
         pushLimited(conv, {role:'user', content:userMsg});
         if(poiId) perPoiConversation.set(poiId, conv);
+      // Add a Reset Context button dynamically if not present
+      (function ensureResetContextButton(){
+        const statusPanel = document.getElementById('statusPanel');
+        if(!statusPanel) return;
+        if(!document.getElementById('resetContextBtn')){
+          const btnRow = statusPanel.querySelector('.panelBody > div');
+          if(btnRow){
+            const b = document.createElement('button');
+            b.id = 'resetContextBtn'; b.className='secondary'; b.textContent='Reset Context'; b.title='Reset AI chat context without clearing visible history';
+            b.addEventListener('click', () => resetNearbyContext('manual'));
+            btnRow.appendChild(b);
+          }
+        }
+      })();
       }
-  const history = [{role:'system', content: systemPrompt}, ...threadToApiMessages(conv)];
+  // Pattern-based direct phrase handling to avoid generic model replies
+  const lowerMsg = (userMsg||'').toLowerCase();
+  const askPattern = /how\s+do\s+i\s+ask\s+if\s+this\s+(.+?)\s+has\s+an?\s+(.+)/i;
+  const sayPattern = /how\s+do\s+i\s+(say|ask)\s+(?:in\s+\w+\s+)?(?:if\s+)?(.+)/i;
+  const nounMap = {
+    'atm':'cajero automático','bathroom':'baño','restroom':'baño','wifi':'wifi','wi-fi':'wifi','ticket machine':'máquina expendedora de billetes','pharmacy':'farmacia','currency exchange':'cambio de moneda','bank':'banco','hotel':'hotel','metro ticket':'billete de metro','bus ticket':'billete de autobús'
+  };
+  function toSpanishThing(raw){
+    if(!raw) return raw;
+    const key = raw.trim().toLowerCase();
+    return nounMap[key] || raw.trim();
+  }
+  if(askPattern.test(lowerMsg)){
+    const m = askPattern.exec(lowerMsg);
+    const place = (m[1]||'').trim();
+    const thing = (m[2]||'').trim();
+    const thingEs = toSpanishThing(thing);
+    // Provide two phrasing options
+    const phrase1 = `¿Este ${place} tiene ${thingEs}?`;
+    const phrase2 = `¿Hay ${thingEs} en este ${place}?`;
+    const resp = `**${phrase1}** / **${phrase2}**\nUse "¿Este [lugar] tiene [cosa]?" for ownership; use "¿Hay [cosa] en ...?" to ask if one exists inside. '¿Hay' introduces existence. 'Tiene' is the third-person form of 'tener'.`;
+    log('Interpreter', resp);
+    pushLimited(conv, {role:'assistant', content: resp}); if(poiId) perPoiConversation.set(poiId, conv);
+    markObjectiveProgressByLearning();
+    try{ const poiObj = poiId ? dynamicPOIs.find(d => d.id == poiId) : null; await detectPOIOutcome(poiObj, resp); }catch(e){}
+    return;
+  } else if(/how\s+do\s+i\s+ask\s+if/i.test(lowerMsg) && /bbva/.test(lowerMsg) && /atm/.test(lowerMsg)){
+    const phrase1 = `¿Este banco tiene cajero automático?`;
+    const phrase2 = `¿Hay un cajero automático en este banco?`;
+    const resp = `**${phrase1}** / **${phrase2}**\nBoth forms are correct. 'cajero automático' means ATM. Use the second to ask about existence; the first about possession.`;
+    log('Interpreter', resp);
+    pushLimited(conv, {role:'assistant', content: resp}); if(poiId) perPoiConversation.set(poiId, conv);
+    markObjectiveProgressByLearning();
+    try{ const poiObj = poiId ? dynamicPOIs.find(d => d.id == poiId) : null; await detectPOIOutcome(poiObj, resp); }catch(e){}
+    return;
+  } else if(sayPattern.test(lowerMsg)){
+    const m = sayPattern.exec(lowerMsg);
+    const rest = (m[2]||'').trim();
+    // Provide guidance: translate key noun phrases via map
+    const parts = rest.split(/\s+/);
+    const translatedParts = parts.map(p => nounMap[p.toLowerCase()] ? nounMap[p.toLowerCase()] : p);
+    const guess = translatedParts.join(' ');
+    const phrase = `**${guess}?**`;
+    const resp = `${phrase}\nAttempted direct phrase. Replace any nouns as needed. Use rising intonation (question mark) or invert word order with a verb if required.`;
+    log('Interpreter', resp);
+    pushLimited(conv, {role:'assistant', content: resp}); if(poiId) perPoiConversation.set(poiId, conv);
+    markObjectiveProgressByLearning();
+    try{ const poiObj = poiId ? dynamicPOIs.find(d => d.id == poiId) : null; await detectPOIOutcome(poiObj, resp); }catch(e){}
+    return;
+  }
+  const envCtx = buildEnvironmentContext(poiId);
+  const history = [{role:'system', content: systemPrompt}, {role:'system', content: envCtx}, ...threadToApiMessages(conv)];
   const ai = await callOpenAI(history);
       let resp = ai;
-      if(!resp){
-        const explanations = [
-          'That phrase is commonly used for polite greetings.',
-          'Notice the verb is in present tense; subject pronoun is implied.',
-          'Adjectives often follow nouns; watch the agreement in gender and number.',
-          'Try rephrasing using the past tense for practice.'
-        ];
-        resp = sample(explanations);
-      }
     // Let log(...) add the assistant/interpreter reply to the active thread
     log('Interpreter', resp);
     markObjectiveProgressByLearning();
@@ -1562,50 +1973,88 @@
       let newly = 0;
       words.forEach(w => { if(isSpanishWord(w) && !learnedVocab.has(w)){ learnedVocab.add(w); newly++; }});
       if(newly > 0){
-        if(currentDayIndex === 2) { // Day 3 index 2 objective about discussing art piece vocabulary? Actually Day 2 is learning 3 new words
-          // Correction: Day 2 target
-        }
-        if(currentDayIndex === 1){ // Day 2 index 1
-          const have3 = learnedVocab.size >= 3;
-          if(have3) markObjective('Learn 3 new words');
-        }
+        const learn3Obj = objectivesState.find(o => /learn 3 new words/i.test(o.text));
+        if(learn3Obj && !learn3Obj.done && learnedVocab.size >= 3){ markObjective(learn3Obj.text); }
         log('System', `New vocab discovered: ${newly} (Total: ${learnedVocab.size})`);
       }
     }
 
     function markObjectiveProgressByLearning(){
-      if(currentDayIndex === 2){ // Day 3 practicing past tense & art piece vocabulary – simplified
-        markObjective('Discuss art piece vocabulary');
-        markObjective('Practice past tense with interpreter');
-      }
-      if(currentDayIndex === 3){ // Day 4 idiom clarification
-        markObjective('Use interpreter to clarify idiom');
-      }
-      if(currentDayIndex === 4){ // Day 5 summarizing
-        markObjective('Summarize learned vocabulary');
-      }
+      // Generic heuristic: if objectives contain matching phrases, mark upon interpreter activity
+      ['Discuss art piece vocabulary','Practice past tense with interpreter','Use interpreter to clarify idiom','Summarize learned vocabulary']
+        .forEach(txt => { const obj = objectivesState.find(o => o.text === txt && !o.done); if(obj) markObjective(obj.text); });
     }
 
     /*****************************************************
-     * DAY ADVANCEMENT
+     * SETUP SCREEN HANDLING
      *****************************************************/
-    elSleepBtn.addEventListener('click', () => {
-      if(!allNonSleepObjectivesDone()){ log('System','Complete all non-sleep objectives first.'); return; }
-      if(!currentNearby.find(p => p.key==='hotel')){ log('System','Must be near the Hotel to sleep.'); return; }
-      // Mark whichever sleep objective exists for the day
-      const sleepObj = objectivesState[currentDayIndex].find(o => isSleepObjective(o.text));
-      if(sleepObj) markObjective(sleepObj.text);
-      if(currentDayIndex < CONFIG.days.length - 1){
-        currentDayIndex++;
-        log('System', `You slept. Starting Day ${currentDayIndex+1}.`);
-        renderObjectives();
-        if(currentDayIndex === CONFIG.days.length - 1){
-          log('System','Final Day! Complete remaining objectives to finish the game.');
-        }
-      } else {
-        log('System','All days complete. Game finished!');
+    function applySetupValues(values){
+      LOCALE.city = values.city;
+      LOCALE.country = values.country;
+      LOCALE.targetLangName = values.targetLangName;
+      LOCALE.targetLangISO = values.targetLangISO;
+      LOCALE.baseLangName = values.baseLangName;
+      LOCALE.baseLangISO = values.baseLangISO;
+      // Update origin
+      const latNum = parseFloat(values.lat);
+      const lonNum = parseFloat(values.lon);
+      if(!isNaN(latNum) && !isNaN(lonNum)){
+        CONFIG.origin.lat = latNum; CONFIG.origin.lon = lonNum;
+        playerLatLng = L.latLng(latNum, lonNum);
+        playerMarker.setLatLng(playerLatLng);
+        map.setView(playerLatLng, CONFIG.origin.zoom);
       }
-    });
+      applyLocale();
+    }
+
+    async function startGameFromSetup(values){
+      applySetupValues(values);
+      const setupStatus = document.getElementById('setupStatus');
+      if(setupStatus) setupStatus.textContent = 'Generating objectives…';
+      const objs = await generateCityObjectives();
+      if(setupStatus) setupStatus.textContent = objs ? `Loaded ${objs.length} objectives.` : 'Failed to generate objectives; using empty list.';
+      renderObjectives();
+    }
+
+    const setupForm = document.getElementById('setupForm');
+    const setupPane = document.getElementById('setupPane');
+    if(setupForm){
+      // Ensure no full-page reload (GET) occurs
+      setupForm.setAttribute('action','javascript:void(0);');
+      setupForm.setAttribute('method','dialog'); // harmless non-submit method to discourage navigation
+      const handleSubmit = async (e) => {
+        if(e){ e.preventDefault(); e.stopPropagation(); }
+        const formData = new FormData(setupForm);
+        const values = Object.fromEntries(formData.entries());
+        await startGameFromSetup(values);
+        gameStarted = true;
+        if(setupPane) setupPane.style.display = 'none';
+        log('System', `Session started in ${LOCALE.city}, ${LOCALE.country}.`);
+      };
+      setupForm.addEventListener('submit', handleSubmit);
+      // Fallback: intercept direct click on the submit button if browser triggers default
+      const submitBtn = document.getElementById('setupSubmitBtn');
+      if(submitBtn){
+        submitBtn.addEventListener('click', (e) => {
+          // If form would submit normally, intercept
+          if(!e.defaultPrevented){ e.preventDefault(); handleSubmit(e); }
+        });
+      }
+    }
+    const setupCancelBtn = document.getElementById('setupCancelBtn');
+    if(setupCancelBtn){
+      setupCancelBtn.addEventListener('click', async () => {
+        const defaults = {
+          city: 'Madrid', country:'Spain', targetLangName:'Spanish', targetLangISO:'es', baseLangName:'English', baseLangISO:'en', lat: CONFIG.origin.lat, lon: CONFIG.origin.lon
+        };
+        await startGameFromSetup(defaults);
+        gameStarted = true;
+        setupPane.style.display = 'none';
+        log('System', `Session started with defaults in ${LOCALE.city}.`);
+      });
+    }
+
+    // Day advancement removed.
 
     /*****************************************************
      * CHAT BUTTONS
@@ -1689,16 +2138,14 @@
      * INITIAL LOG ENTRIES
      *****************************************************/
     // Welcome messages should persist in the Nearby/general thread so they are not lost when tabs change.
-  originalLog('System',`Welcome to TravelSim ${LOCALE.city}. Approach the Airport marker and interact to begin.`);
-  addMessageToThread('System',`Welcome to TravelSim ${LOCALE.city}. Approach the Airport marker and interact to begin.`, null);
-    originalLog('System','Day 1 objective: arrive, reach hotel, check-in, then sleep.');
-    addMessageToThread('System','Day 1 objective: arrive, reach hotel, check-in, then sleep.', null);
+    originalLog('System',`Welcome to TravelSim ${LOCALE.city}.`);
+    addMessageToThread('System',`Welcome to TravelSim ${LOCALE.city}.`, null);
 
     /*****************************************************
      * DYNAMIC POI & ROUTE INSTRUCTIONS (NEW FEATURE)
      *****************************************************/
-  const dynamicLayerGroup = L.layerGroup().addTo(map);
-  const routeLayerGroup = L.layerGroup().addTo(map);
+    const dynamicLayerGroup = L.layerGroup().addTo(map);
+    const routeLayerGroup = L.layerGroup().addTo(map);
     let dynamicPoiId = 1;
     // Do not add layers to the map until a POI is 'discovered'. Instead create the layer object but keep it detached.
     function addDynamicPOI({name, lat, lon, description='', confidence='precise', tags=null}){
@@ -1712,12 +2159,13 @@
         layer = L.marker([lat, lon], {title:name})
           .bindPopup(`<strong>${escapeHtml(name)}</strong><br/>${escapeHtml(description)}`);
       } else {
-        // Approximate: show a semi-transparent circle (radius ~400m) until refined
-        layer = L.circle([lat, lon], {radius:400, color:'#ffb703', weight:2, fillColor:'#ffb703', fillOpacity:0.25})
+        // Approximate: show a semi-transparent circle (radius ~400m) until refined (render beneath markers)
+        layer = L.circle([lat, lon], {radius:400, color:'#ffb703', weight:2, fillColor:'#ffb703', fillOpacity:0.25, pane:'approxPOI'})
           .bindPopup(`<strong>${escapeHtml(name)}</strong><br/>Approximate area<br/>${escapeHtml(description)}`);
       }
       const poi = {id, name, lat, lon, confidence, layer, description, _visible:false};
       if(tags) poi.tags = tags;
+      if(confidence === 'approx') poi._approxOf = (name||'').toLowerCase().trim();
       dynamicPOIs.push(poi);
       // log('System', `Dynamic POI added (buffered): ${name}`);
       return poi;
@@ -1759,7 +2207,8 @@
       } else if(/near\s+([A-Za-zÁÉÍÓÚÜÑáéíóú0-9'’\- ]+)/i.test(text)){ // approximate area near something
         const nearName = RegExp.$1.trim();
         // Use player position as provisional center
-        addDynamicPOI({name: nearName, lat: playerLatLng.lat, lon: playerLatLng.lng, description:'Approximate (near keyword)', confidence:'approx'});
+        const approx = addDynamicPOI({name: nearName, lat: playerLatLng.lat, lon: playerLatLng.lng, description:'Approximate (near keyword)', confidence:'approx'});
+        if(approx) approx._approxOf = (nearName||'').toLowerCase().trim();
       }
       // Route instructions: sequences like 'walk east 200m then south 50m'
       if(/\b(north|south|east|west)\b/i.test(text) && /\d+\s?m/i.test(text)){
@@ -1855,12 +2304,12 @@
       }catch(e){ console.warn('applyAIAction error', e); }
     }
 
-    // Discover or create a POI by name (optionally with coordinates). Exposed for console or AI server helpers.
-    function discoverPOIByName({name, lat, lon, description, tags} = {}){
+    // Discover or create a POI by name. Only create approximate area if name verified via Overpass.
+    async function discoverPOIByName({name, lat, lon, description, tags} = {}){
       if(!name) return null;
       const norm = stripDiacritics(name).replace(/[\s\-]+/g,' ').trim().toLowerCase();
       const qTokens = norm.split(/\s+/).filter(Boolean);
-      function tokensOf(s){ return stripDiacritics((s||'')).replace(/[\s\-]+/g,' ').trim().toLowerCase().split(/\s+/).filter(Boolean); }
+      const tokensOf = (s) => stripDiacritics((s||'')).replace(/[\s\-]+/g,' ').trim().toLowerCase().split(/\s+/).filter(Boolean);
       let poi = dynamicPOIs.find(d => stripDiacritics((d.name||'')).replace(/[\s\-]+/g,' ').trim().toLowerCase() === norm);
       if(!poi){
         poi = dynamicPOIs.find(d => {
@@ -1873,12 +2322,25 @@
         const single = qTokens[0];
         poi = dynamicPOIs.find(d => tokensOf(d.name||'').some(t => t === single));
       }
-      // If still not found, create a POI at provided coords or approximate at player location
-      if(!poi){
-        const latEl = (lat != null && lon != null) ? lat : playerLatLng.lat;
-        const lonEl = (lat != null && lon != null) ? lon : playerLatLng.lng;
-        const conf = (lat != null && lon != null) ? 'precise' : 'approx';
-        poi = addDynamicPOI({name, lat: latEl, lon: lonEl, description: description||'Discovered by name', confidence: conf, tags: tags||null});
+      // Coordinates provided: create precise immediately
+      if(!poi && lat != null && lon != null){
+        poi = addDynamicPOI({name, lat, lon, description: description||'Discovered (coordinates)', confidence:'precise', tags: tags||null});
+      }
+      // If still not found and no coordinates, verify existence before creating approximate
+      if(!poi && (lat == null || lon == null)){
+        let exists = false;
+        try {
+          const qName = name.replace(/"/g,'\\"');
+          const ovQuery = `[out:json][timeout:25];(node(around:${OSM.radiusMeters},${playerLatLng.lat},${playerLatLng.lng})["name"~"^${qName}$",i];way(around:${OSM.radiusMeters},${playerLatLng.lat},${playerLatLng.lng})["name"~"^${qName}$",i];);out center;`;
+          const res = await fetch(OSM.api, {method:'POST', body:ovQuery, headers:{'Content-Type':'text/plain'}});
+          if(res.ok){ const data = await res.json(); exists = Array.isArray(data.elements) && data.elements.length > 0; }
+        } catch(e){ console.debug('Overpass verify discover failed', e); }
+        if(!exists){
+          log('System', `POI '${name}' not found nearby; no approximate area created.`);
+          return null;
+        }
+        poi = addDynamicPOI({name, lat: playerLatLng.lat, lon: playerLatLng.lng, description: description||'Approximate (pending precise discovery)', confidence:'approx', tags: tags||null});
+        if(poi) poi._approxOf = norm;
       }
       if(poi){ poi._discovered = true; poi._unlocked = true; showDynamicPOI(poi); log('System', `POI discovered/unlocked: ${poi.name}`); }
       return poi;
