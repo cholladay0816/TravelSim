@@ -437,9 +437,10 @@
     let lastContextAnchor = L.latLng(CONFIG.origin.lat, CONFIG.origin.lon);
     let conversationEpoch = 0; // increments on context reset; older messages kept visually
       let gameStarted = false; // track if a session is active to add setup close button
-    // Context reset throttling & chat activity tracking to avoid spammy movement resets
-    let lastResetTs = 0; // ms timestamp of last nearby context reset
-    let lastChatActivityTs = Date.now(); // updated on any user/assistant message
+  // Context reset throttling & chat activity tracking to avoid spammy movement resets
+  let lastResetTs = 0; // ms timestamp of last nearby context reset
+  // Track last non-system chat activity; initialize to 0 to indicate no activity yet
+  let lastChatActivityTs = 0; // updated on any user/assistant message
     // Transient environment context for AI prompts (not stored in conversation threads)
     function buildEnvironmentContext(selectedPoiId=null){
       try{
@@ -462,13 +463,17 @@
     }
 
     function resetNearbyContext(reason='movement'){
-        // Only reset if at least one non-system message exists in any conversation
+        // Only reset if there has been chat activity (non-system messages) since the last reset.
+        // Use lastChatActivityTs / lastResetTs timestamps to avoid spamming resets while moving.
+        const hadRecentActivity = lastChatActivityTs && lastResetTs ? lastChatActivityTs > lastResetTs : !!lastChatActivityTs;
+        // Also keep a conservative content-based guard: ensure at least one non-system message exists
         const hasNonSystem = ([...perPoiConversation.values(), npcConversation]).some(conv => conv && conv.some(m => (m.role||'').toLowerCase() !== 'system'));
-        if(!hasNonSystem){
-          // Skip reset silently per requirement (no conversation yet besides system)
+        if(!hadRecentActivity || !hasNonSystem){
+          // Skip reset silently if no meaningful conversation happened since last reset
           return;
         }
         conversationEpoch++;
+        lastResetTs = Date.now();
         log('System', `Nearby conversation reset (${reason}).`);
         lastContextAnchor = L.latLng(playerLatLng.lat, playerLatLng.lng);
     }
@@ -998,7 +1003,13 @@ Return strictly the JSON array; no commentary.`;
     // Append a message to a thread (poiId=null -> general), store it, and render if that thread is active
     function addMessageToThread(role, text, poiId=null){
       const entry = { role, content: text, ts: Date.now(), epoch: conversationEpoch };
-      lastChatActivityTs = Date.now();
+      // Only treat non-system messages as user/assistant activity. System messages should not
+      // mark the thread as "active" for the purposes of movement-triggered context resets.
+      try {
+        if(((role||'').toString().toLowerCase() !== 'system')){
+          lastChatActivityTs = Date.now();
+        }
+      } catch (e) { /* defensive: if role check fails, avoid updating activity timestamp */ }
       if(poiId){
         const conv = perPoiConversation.get(poiId) || [];
         conv.push(entry); if(conv.length > 200) conv.splice(0, conv.length - 200);
@@ -1093,7 +1104,7 @@ Return strictly the JSON array; no commentary.`;
 
     // Return a role-playing system prompt for a POI based on tags or name heuristics
     function getPOISystemPrompt(poi){
-  if(!poi) return `You are a friendly local in ${LOCALE.city} helping a traveler with their questions in ${LOCALE.targetLangName}. You only know ${LOCALE.targetLangName} (${LOCALE.targetLangISO.toUpperCase()}). Provide concise responses.`;
+  if(!poi) return `You are a friendly local in ${LOCALE.city} helping a traveler with their questions in ${LOCALE.targetLangName}. You only know ${LOCALE.targetLangName} (${LOCALE.targetLangISO.toUpperCase()}). Provide concise responses. If context is not relevant, don't mention it.`;
       const tags = poi.tags || {};
       const amenity = (tags.amenity||'').toLowerCase();
       const tourism = (tags.tourism||'').toLowerCase();
@@ -1102,33 +1113,33 @@ Return strictly the JSON array; no commentary.`;
       const nameLower = (poi.name||'').toLowerCase();
       // Bank / currency exchange
       if(poi?.key === 'bank' || /bank|banco|cambio/i.test(nameLower) || (poi?.tags && ((poi.tags.amenity||'').toLowerCase().includes('bank') || (poi.tags.shop||'').toLowerCase().includes('bureau_de_change')))){
-  return `You are a bank teller at a branch in ${LOCALE.city}. Assist the customer with currency exchange, withdrawals, and basic account inquiries in ${LOCALE.targetLangName}. Avoid ${LOCALE.baseLangName} unless clarifying a single word briefly. Keep responses concise and stay in character.`;
+  return `You are a bank teller at a branch in ${LOCALE.city}. Assist the customer with currency exchange, withdrawals, and basic account inquiries in ${LOCALE.targetLangName}. Avoid ${LOCALE.baseLangName} unless clarifying a single word briefly. Keep responses concise and stay in character. If context is not relevant, don't mention it.`;
       }
       // Hotel / lodging
       if(tourism.includes('hotel') || /hotel/i.test(poi.name)){
-  return `You are the hotel front desk agent in ${LOCALE.city}. Greet the guest politely in ${LOCALE.targetLangName}, ask for reservation details and stay in character. Don't ask for personal information. Avoid ${LOCALE.baseLangName} unless clarifying a single word. Keep responses concise and helpful.`;
+  return `You are the hotel front desk agent in ${LOCALE.city}. Greet the guest politely in ${LOCALE.targetLangName}, ask for reservation details and stay in character. Don't ask for personal information. Avoid ${LOCALE.baseLangName} unless clarifying a single word. Keep responses concise and helpful. If context is not relevant, don't mention it.`;
       }
       // Restaurant / cafe
       if(['restaurant','cafe','bar','fast_food'].includes(amenity) || /cafe|bar|restaurante/i.test(poi.name)){
-  return `You are a restaurant/cafe staff member. Act in ${LOCALE.targetLangName}, take orders, suggest menu items, and be friendly. Avoid ${LOCALE.baseLangName} unless giving a one-word clarification. Keep responses concise.`;
+  return `You are a restaurant/cafe staff member. Act in ${LOCALE.targetLangName}, take orders, suggest menu items, and be friendly. Avoid ${LOCALE.baseLangName} unless giving a one-word clarification. Keep responses concise. If context is not relevant, don't mention it.`;
       }
       // Shop
       if(shop || /tienda|shop|supermercado|bakery|panader/i.test(poi.name)){
-  return `You are a shopkeeper in ${LOCALE.city}. Help the customer, discuss prices, accept payment, and offer small conversational phrases in ${LOCALE.targetLangName}. Avoid ${LOCALE.baseLangName} unless clarifying a single word. Keep responses concise and role-play realistic store interactions.`;
+  return `You are a shopkeeper in ${LOCALE.city}. Help the customer, discuss prices, accept payment, and offer small conversational phrases in ${LOCALE.targetLangName}. Avoid ${LOCALE.baseLangName} unless clarifying a single word. Keep responses concise and role-play realistic store interactions. If context is not relevant, don't mention it.`;
       }
       // Medical: differentiate hospitals and clinics
       if(['hospital','doctors','healthcare','medical_centre','health_post'].includes(amenity) || /hospital|centro de salud|hospitalaria|hospitalidad/i.test(poi.name)){
-  return `You are staff at a hospital in ${LOCALE.city}. You are familiar with admissions, triage, and directing patients within a hospital. Speak in ${LOCALE.targetLangName}, be compassionate, provide next steps for in-hospital care, and remain in character; do not tell the user to "call" emergency services since they are already present. Avoid ${LOCALE.baseLangName} unless clarifying a single word. Keep responses concise and professional.`;
+  return `You are staff at a hospital in ${LOCALE.city}. You are familiar with admissions, triage, and directing patients within a hospital. Speak in ${LOCALE.targetLangName}, be compassionate, provide next steps for in-hospital care, and remain in character; do not tell the user to "call" emergency services since they are already present. Avoid ${LOCALE.baseLangName} unless clarifying a single word. Keep responses concise and professional. If context is not relevant, don't mention it.`;
       }
       if(['clinic','health_post'].includes(amenity) || /clinic|clínica|consultorio/i.test(poi.name)){
-  return `You are a medical clinic staff member in ${LOCALE.city}. Respond in ${LOCALE.targetLangName}, ask about symptoms, offer basic triage advice, and direct the user to emergency services if necessary. Avoid ${LOCALE.baseLangName} unless clarifying a single word. Do not provide prescriptions; keep responses concise and compassionate.`;
+  return `You are a medical clinic staff member in ${LOCALE.city}. Respond in ${LOCALE.targetLangName}, ask about symptoms, offer basic triage advice, and direct the user to emergency services if necessary. Avoid ${LOCALE.baseLangName} unless clarifying a single word. Do not provide prescriptions; keep responses concise and compassionate. If context is not relevant, don't mention it.`;
       }
       // Airport / airline
       if(aeroway.includes('aerodrome') || aeroway.includes('airport') || /aeropuerto|airport/i.test(poi.name)){
-  return `You are an airline check-in agent at ${LOCALE.city} airport. Ask for passport and flight details, check bags, and provide boarding information. Use ${LOCALE.targetLangName} primarily but clarify with brief ${LOCALE.baseLangName} when necessary.`;
+  return `You are an airline check-in agent at ${LOCALE.city} airport. Ask for passport and flight details, check bags, and provide boarding information. Use ${LOCALE.targetLangName} primarily but clarify with brief ${LOCALE.baseLangName} when necessary. If context is not relevant, don't mention it.`;
       }
       // Default local NPC
-  return `You are a friendly local in ${LOCALE.city} helping a traveler with their questions in ${LOCALE.targetLangName}. You only know ${LOCALE.targetLangName} (${LOCALE.targetLangISO.toUpperCase()}). Provide concise responses.`;
+  return `You are a friendly local in ${LOCALE.city} helping a traveler with their questions in ${LOCALE.targetLangName}. You only know ${LOCALE.targetLangName} (${LOCALE.targetLangISO.toUpperCase()}). Provide concise responses. If context is not relevant, don't mention it.`;
     }
 
     /*****************************************************
@@ -1874,7 +1885,7 @@ Return strictly the JSON array; no commentary.`;
     }
 
     async function npcResponse(userMsg, poiId=null){
-  const systemPrompt = `You are a friendly local in ${LOCALE.city} helping a traveler. Speak only in ${LOCALE.targetLangName} (${LOCALE.targetLangISO.toUpperCase()}). Use nearby POIs if relevant. First reply must NOT be a generic greeting alone; include a location-grounded helpful offer (reference nearest relevant POI if plausible) AND exactly one concise clarifying question about what they need. Avoid ${LOCALE.baseLangName} unless clarifying a single word.`;
+  const systemPrompt = `You are a friendly local in ${LOCALE.city} helping a traveler. Speak only in ${LOCALE.targetLangName} (${LOCALE.targetLangISO.toUpperCase()}). Use nearby POIs only if relevant. Sometimes include a location-grounded helpful offer (reference nearest relevant POI if plausible) and a concise clarifying question about what they need. Avoid ${LOCALE.baseLangName} unless clarifying a single word. If context is not relevant, don't mention it.`;
   const conv = poiId ? (perPoiConversation.get(poiId) || []) : npcConversation;
   // Avoid duplicate user message insert if log('You', ...) already recorded it
   const last = conv[conv.length-1];
