@@ -252,6 +252,7 @@
           <select id="presetSelect" style="width:100%; padding:6px;">
             <option value="custom">Custom…</option>
             <option value="madrid" selected>Madrid (Spanish)</option>
+            <option value="valencia">Valencia (Spanish)</option>
             <option value="berlin">Berlin (German)</option>
             <option value="paris">Paris (French)</option>
             <option value="rome">Rome (Italian)</option>
@@ -376,6 +377,11 @@
         city: 'Madrid', country: 'Spain', targetLangName: 'Spanish', targetLangISO: 'es',
         baseLangName: 'English', baseLangISO: 'en', lat: '40.491679', lon: '-3.593266',
         airport: 'Adolfo Suárez Madrid-Barajas'
+      },
+      valencia: {
+        city: 'Valencia', country: 'Spain', targetLangName: 'Spanish', targetLangISO: 'es',
+        baseLangName: 'English', baseLangISO: 'en', lat: '39.49251309466901', lon: '-0.474027880588345',
+        airport: 'Valencia Airport (VLC)'
       },
       berlin: {
         city: 'Berlin', country: 'Germany', targetLangName: 'German', targetLangISO: 'de',
@@ -1612,7 +1618,7 @@ Return strictly the JSON array; no commentary.`;
       // limit to tags we care about (hotels, restaurants, cafes, shops, aeroway, etc.) to reduce payload
       const q = `[
         out:json][timeout:${OSM.timeoutSec}];(
-          node(around:${radius},${lat},${lon})[amenity~"^(restaurant|cafe|bar|pub|fast_food|bench|bank|fuel|taxi|hospital|clinic|clinic|clinic)$"];
+          node(around:${radius},${lat},${lon})[amenity~"^(restaurant|cafe|bar|pub|fast_food|bank|fuel|taxi|hospital|clinic|clinic|clinic)$"];
           node(around:${radius},${lat},${lon})[tourism~"^(hotel|hostel|motel|guest_house)$"];
           node(around:${radius},${lat},${lon})[shop~"^(bakery|supermarket|convenience|mall|clothes|mall|shoes|coffee|tea)$"];
           node(around:${radius},${lat},${lon})[aeroway];
@@ -1635,6 +1641,8 @@ Return strictly the JSON array; no commentary.`;
         if(!latEl || !lonEl) return;
         // Filter interesting tags: cafe/restaurant/hotel/airport/shop/bus_station etc.
         const tags = el.tags || {};
+        // Defensive: exclude benches (amenity=bench) explicitly even if they slip through the query
+        if((tags.amenity || '').toString().toLowerCase() === 'bench') return;
         const kind = (tags.amenity || tags.tourism || tags.shop || tags.aeroway || '').toLowerCase();
         const name = tags.name || tags['name:en'] || `OSM ${kind || el.type}`;
         // skip skippable OSM features entirely (navigation aids, gates, holding positions)
