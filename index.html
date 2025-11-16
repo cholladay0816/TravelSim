@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>TravelSim Madrid – Language Learning Map Game</title>
+  <title id="appTitle">TravelSim Madrid – Language Learning Map Game</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <!-- Leaflet CDN -->
   <link
@@ -25,19 +25,53 @@
     }
     html, body { height:100%; margin:0; padding:0; background: var(--bg); color: var(--text); font-family: system-ui, Segoe UI, Arial, sans-serif; }
     #map { position:absolute; top:0; left:0; right:0; bottom:0; z-index:1; }
-    .hud { position:fixed; z-index:500; display:flex; gap:12px; top:8px; left:8px; flex-wrap:wrap; }
-    .panel { background: var(--panel); padding:10px 14px; border-radius: var(--radius); box-shadow: 0 4px 14px -4px rgba(0,0,0,.6); backdrop-filter: blur(4px); }
-    .panel h2, .panel h3 { margin:.2em 0 .4em; font-weight:600; font-size:1rem; letter-spacing:.5px; }
-    .collapseToggle { background: none; border:none; color: var(--accent); cursor:pointer; font-size:.9rem; padding:2px 6px; margin-right:4px; border-radius:4px; }
-    .panel.collapsed > *:not(h2):not(h3) { display:none; }
-    .panel.collapsed .collapseToggle { transform:rotate(-90deg); }
+  /* HUD container: allow clicks to pass through except where panels are present */
+  .hud { position:fixed; z-index:500; display:flex; gap:12px; top:8px; left:8px; flex-wrap:wrap; pointer-events: none; }
+  /* Panels must be interactive (override container) */
+  .panel { background: var(--panel); padding:10px 14px; border-radius: var(--radius); box-shadow: 0 4px 14px -4px rgba(0,0,0,.6); backdrop-filter: blur(4px); pointer-events: auto; transition: max-height .22s ease, padding .18s ease, opacity .18s ease; min-width:200px; }
+  /* Make headers align nicely and remain visible when collapsed */
+  .panel h2, .panel h3 { margin:.2em 0 .4em; font-weight:600; font-size:1rem; letter-spacing:.5px; display:flex; align-items:center; gap:8px; }
+  /* Keep header text on one line and ellipsize if needed */
+  .panel h2, .panel h3 { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .collapseToggle { background: none; border:none; color: var(--accent); cursor:pointer; font-size:.9rem; padding:2px 6px; margin-right:4px; border-radius:4px; }
+  /* When collapsed, hide the panel body but keep header h2/h3 visible so user can re-open */
+  .panel.collapsed .panelBody { display:none; }
+  /* collapsed panels become thin headers to conserve space */
+  .panel.collapsed { padding:6px 10px; max-height:56px; min-width:160px; min-height:40px; overflow:hidden; }
+  .panel.collapsed h2, .panel.collapsed h3 { margin:0; }
+  .panel.collapsed .collapseToggle { transform:rotate(-90deg); }
     .flex { display:flex; }
     #objectives li { margin-bottom:4px; line-height:1.2; }
     #objectives li.done { text-decoration: line-through; opacity:.55; }
     #objectives { list-style: none; padding-left:0; margin:0; max-width:260px; }
     #dayBadge { font-size:.9rem; font-weight:600; background: var(--accent2); color:#fff; padding:4px 10px; border-radius:20px; display:inline-block; }
-    #chatPanel { position:fixed; bottom:8px; left:8px; right:8px; z-index:600; display:flex; flex-direction:column; gap:6px; max-width:860px; }
-    #log { background:#0f141a; border:1px solid #28313c; min-height:160px; padding:10px; overflow-y:auto; font-size:.85rem; border-radius: var(--radius); }
+  #chatPanel { position:fixed; bottom:8px; left:8px; right:8px; z-index:600; display:flex; flex-direction:column; gap:6px; max-width:860px; height:320px; }
+  /* Chat grab handle for resizing: larger hit area, visually centered and overlapping panel padding */
+  #chatPanel .chatGrab {
+    height:22px;
+    cursor:row-resize;
+    border-radius:8px 8px 0 0;
+    background:transparent;
+    align-self:stretch;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    margin-top:-12px; /* overlap the panel padding so handle sits at the very top */
+    position:relative;
+    z-index:20;
+    touch-action:none;
+  }
+  #chatPanel .chatGrab::before{
+    content:'';
+    width:64px;
+    height:6px;
+    border-radius:4px;
+    background:linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+    box-shadow:0 1px 0 rgba(0,0,0,0.35) inset;
+    display:block;
+  }
+  /* Ensure the chat log fills the panel and scrolls */
+  #log { background:#0f141a; border:1px solid #28313c; min-height:80px; max-height:none; padding:10px; overflow:auto; font-size:.85rem; border-radius: var(--radius); flex:1 1 auto; }
     #log .entry { margin-bottom:6px; }
     #log .role { font-weight:600; margin-right:4px; }
     #inputRow { display:flex; gap:6px; }
@@ -58,8 +92,15 @@
     #helpPane { position:fixed; inset:0; background:rgba(0,0,0,.72); color:#fff; z-index:1000; display:none; align-items:center; justify-content:center; padding:40px; }
     #helpPane .inner { max-width:820px; line-height:1.4; }
     #helpPane h1 { margin-top:0; }
-  #vocabPanel { min-width:260px; max-height:220px; overflow-y:auto; }
+  /* Vocab panel should not scroll itself; inner list will handle overflow so the scrollbar
+    sits close to the content rather than the outer panel edge. */
+  #vocabPanel { min-width:260px; display:flex; flex-direction:column; gap:6px; }
   #vocabPanel ul { list-style:none; margin:0; padding:0; }
+  /* The inner study list is the scrollable area (scrollbar appears here). JS may adjust
+    max-height dynamically; provide sensible defaults and scrollbar styling. */
+  /* Study list: default scrollable area with a sensible max height so the scrollbar appears
+    when there are more items. JS will still adjust maxHeight dynamically as needed. */
+  #studyList { list-style:none; margin:0; padding:0 6px 0 0; overflow:auto; max-height:220px; position:relative; }
   #vocabPanel li { display:flex; justify-content:space-between; align-items:center; font-size:.7rem; padding:4px 0; border-bottom:1px solid #28313c; }
   #vocabPanel li span.word { font-weight:600; }
   #vocabPanel button.small { padding:2px 6px; font-size:.6rem; }
@@ -68,11 +109,39 @@
   .vocab-new { background:#28313c; padding:2px 4px; border-radius:4px; color:#ffba08; }
   #vocabTooltip { position:absolute; background:#1d252e; border:1px solid #28313c; padding:8px 10px; border-radius:8px; font-size:.7rem; z-index:1200; display:none; width:200px; box-shadow:0 4px 12px -3px rgba(0,0,0,.6); }
   #vocabTooltip h4 { margin:0 0 6px; font-size:.75rem; }
+  /* Nearby tabs above the chat log */
+  .nearbyTabs { display:flex; gap:6px; padding:6px 8px; align-items:center; }
+  .nearbyTab { background:#15202a; color:var(--text); padding:6px 10px; border-radius:8px; cursor:pointer; font-size:.85rem; border:1px solid transparent; }
+  .nearbyTab.selected { background:var(--accent); color:#000; border-color:rgba(0,0,0,0.12); }
   #vocabTooltip button { font-size:.6rem; padding:4px 8px; }
     a { color: var(--accent); }
     code { background:#161f27; padding:2px 4px; border-radius:4px; font-size:.8rem; }
-    /* Scrollbar styling */
-    #log::-webkit-scrollbar { width:8px; } #log::-webkit-scrollbar-track { background:#121a21; } #log::-webkit-scrollbar-thumb { background:#28313c; border-radius:6px; }
+  /* Scrollbar styling for scrollable areas */
+  /* Ensure a stable gutter so the scrollbar doesn't overlay content on modern browsers */
+  #studyList { scrollbar-gutter: stable both-edges; padding-right:8px; }
+    /* Chromium / WebKit scrollbars */
+  #log::-webkit-scrollbar, #studyList::-webkit-scrollbar { width:12px; }
+  #log::-webkit-scrollbar-track, #studyList::-webkit-scrollbar-track { background: rgba(15,20,26,0.6); border-radius:8px; }
+  #log::-webkit-scrollbar-thumb, #studyList::-webkit-scrollbar-thumb { background:#60707a; border-radius:8px; border:2px solid rgba(0,0,0,0.12); background-clip: padding-box; }
+  #log::-webkit-scrollbar-thumb:hover, #studyList::-webkit-scrollbar-thumb:hover { background:#78878f; }
+    /* Firefox scrollbar settings */
+    #studyList { scrollbar-width: thin; scrollbar-color: #28313c rgba(255,255,255,0.02); }
+
+    /* Faux visible scrollbar indicator when native scrollbars are hidden (OS overlay)
+       We'll toggle the 'overflowing' class on the element when content overflows. */
+    #studyList.overflowing::after{
+      content:'';
+      position:absolute;
+      right:4px;
+      top:6px;
+      bottom:6px;
+      width:8px;
+      background: linear-gradient(180deg, rgba(96,112,122,0.95), rgba(96,112,122,0.75));
+      border-radius:8px;
+      pointer-events:none;
+      opacity:0.95;
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12);
+    }
     /* Mobile adjustments */
     @media (max-width:700px){
       .hud { flex-direction:column; }
@@ -112,47 +181,60 @@
   <div id="map"></div>
   <div class="hud">
     <div class="panel" id="statusPanel">
-      <h2><button class="collapseToggle" data-panel="statusPanel" title="Collapse/Expand">▾</button> TravelSim Madrid <span id="dayBadge">Day 1 / 5</span></h2>
-      <div style="font-size:.75rem; opacity:.8;">Target Language: <strong>Spanish (es)</strong> | Base: English (en)</div>
-      <div id="playerPos" style="margin-top:4px; font-size:.7rem; opacity:.7;">Pos: …</div>
-      <div id="nearby" style="font-size:.7rem; margin-top:4px;">Nearby: none</div>
-      <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
-        <button id="sleepBtn" disabled>Sleep (Hotel)</button>
-        <button id="centerBtn" class="secondary">Center Map</button>
-        <button id="resetBtn" class="secondary">Reset</button>
-        <button id="cancelRouteBtn" class="secondary" title="Cancel active route">Cancel Route</button>
+  <h2><button class="collapseToggle" data-panel="statusPanel" title="Collapse/Expand">▾</button> TravelSim <span class="localeCity">Madrid</span> <span id="dayBadge">Day 1 / 5</span></h2>
+      <div class="panelBody">
+  <div style="font-size:.75rem; opacity:.8;">Target Language: <strong id="targetLangLabel">Spanish (es)</strong> | Base: <span id="baseLangLabel">English (en)</span></div>
+        <div id="playerPos" style="margin-top:4px; font-size:.7rem; opacity:.7;">Pos: …</div>
+        <div id="nearby" style="font-size:.7rem; margin-top:4px;">Nearby: none</div>
+        <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
+          <button id="sleepBtn" disabled>Sleep (Hotel)</button>
+          <button id="centerBtn" class="secondary">Center Map</button>
+          <button id="resetBtn" class="secondary">Reset</button>
+          <button id="cancelRouteBtn" class="secondary" title="Cancel active route">Cancel Route</button>
+        </div>
       </div>
     </div>
     <div class="panel" style="min-width:280px;" id="objectivesPanel">
       <h3><button class="collapseToggle" data-panel="objectivesPanel" title="Collapse/Expand">▾</button> Objectives</h3>
-      <ul id="objectives"></ul>
+      <div class="panelBody">
+        <ul id="objectives"></ul>
+      </div>
     </div>
     <div class="panel" id="vocabPanel">
       <h3><button class="collapseToggle" data-panel="vocabPanel" title="Collapse/Expand">▾</button> Study Words</h3>
-      <ul id="studyList"></ul>
-      <div id="exportRow">
-        <button id="exportCsvBtn" class="secondary" title="Export to Anki CSV">Export CSV</button>
-        <label style="font-size:.6rem; display:flex; align-items:center; gap:4px;"><input type="checkbox" id="includeExportedChk"/> Include exported</label>
-        <button id="clearExportFlagsBtn" class="secondary" title="Reset exported flags">Reset Flags</button>
+      <div class="panelBody">
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
+          <input id="studySearch" placeholder="Filter study words…" style="flex:1; padding:6px 8px; border-radius:6px; border:1px solid #28313c; background:#0f141a; color:var(--text);" />
+          <div style="font-size:.75rem; opacity:.8;">Show: <span id="studyCount">0</span></div>
+        </div>
+        <ul id="studyList"></ul>
+        <div id="exportRow">
+          <button id="exportCsvBtn" class="secondary" title="Export to Anki CSV">Export CSV</button>
+          <label style="font-size:.6rem; display:flex; align-items:center; gap:4px;"><input type="checkbox" id="includeExportedChk"/> Include exported</label>
+          <button id="clearExportFlagsBtn" class="secondary" title="Reset exported flags">Reset Flags</button>
+        </div>
       </div>
     </div>
   </div>
   <button id="helpToggle" class="secondary" title="Help / Instructions">?</button>
   <div id="helpPane">
     <div class="inner panel">
-      <h1>TravelSim Madrid Help</h1>
-  <p>Move by <strong>double-clicking the map</strong> to plan a walking route (OSRM). Keyboard movement is disabled in this mode. Approach POIs (Airport, Hotel, Plaza Mayor, Museo del Prado, Retiro Park, Restaurant) to interact. When in range press <strong>Space</strong> or type and pick <em>NPC</em> to practice Spanish. Use <em>Interpreter</em> for English explanations. After completing all daily objectives, stand near the Hotel and press <strong>Sleep</strong> to advance the day.</p>
+  <h1>TravelSim <span class="localeCity">Madrid</span> Help</h1>
+  <p>Move by <strong>double-clicking the map</strong> to plan a walking route (OSRM). Keyboard movement is disabled in this mode. Approach POIs (Airport, Hotel, Plaza Mayor, Museo del Prado, Retiro Park, Restaurant) to interact. When in range press <strong>Space</strong> or type and pick <em>NPC</em> to practice <span class="localeTargetLang">Spanish</span>. Use <em>Interpreter</em> for <span class="localeBaseLang">English</span> explanations. After completing all daily objectives, stand near the Hotel and press <strong>Sleep</strong> to advance the day.</p>
       <p>Vocabulary is highlighted on first appearance. This is a stub; no real AI calls are made.</p>
       <p style="text-align:center; margin-top:30px;"><button id="closeHelp">Close</button></p>
     </div>
   </div>
   <div id="chatPanel" class="panel">
+    <div id="chatGrab" class="chatGrab" title="Drag to resize chat panel"></div>
+    <div id="nearbyTabs" class="nearbyTabs" aria-label="Nearby locations tabs"></div>
     <div id="log"></div>
     <div id="inputRow">
-      <input id="msgInput" placeholder="Type your message (Spanish or English)…" />
+  <input id="msgInput" placeholder="Type your message (Spanish or English)…" />
       <button id="npcBtn">NPC</button>
       <button id="interpreterBtn" class="secondary">Interpreter</button>
       <button id="translateBtn" class="secondary">Translate Last</button>
+      <button id="discoverBtn" class="secondary">Discover</button>
     </div>
   </div>
   <div id="vocabTooltip"></div>
@@ -166,16 +248,15 @@
      * CONFIGURATION
      *****************************************************/
     const CONFIG = {
-      origin: { lat: 40.4983, lon: -3.5676, zoom: 12 }, // Madrid Airport approximate
+      origin: { lat: 40.491679, lon: -3.593266, zoom: 12 }, // New starting origin (user request)
       language: { target: 'es', base: 'en' },
-      player: { moveMeters: 12, fastMultiplier: 2, proximityMeters: 70 },
-      movement: { enableKeyboard: false, routeSpeedMps: 20 }, // walking speed
+      player: { moveMeters: 12, fastMultiplier: 2, proximityMeters: 120 },
+      movement: { enableKeyboard: false, routeSpeedMps: 200 }, // walking speed
       routing: { profile: 'foot' },
       days: [
         { id:1, objectives:[
-          'Arrive at the airport',
-          'Travel to the hotel',
-          'Check-in conversation at the hotel',
+          'Exchange currency at a bank',
+          'Check-in at a hotel',
           'Sleep to start Day 2'
         ]},
         { id:2, objectives:[
@@ -204,14 +285,55 @@
         ]}
       ],
       pois: [
-        { key:'airport', name:'Aeropuerto (Airport)', lat:40.4983, lon:-3.5676, type:'travel', dialog:['Bienvenido a Madrid. ¿Cómo fue tu vuelo?','¿Necesitas ayuda con el equipaje?'] },
-        { key:'hotel', name:'Hotel Central', lat:40.4140, lon:-3.7045, type:'rest', dialog:['Bienvenido al hotel. ¿Tiene reserva?','Su habitación está lista. ¡Disfrute su estancia!'] },
-        { key:'plaza', name:'Plaza Mayor', lat:40.4154, lon:-3.7074, type:'culture', dialog:['¡Hola! ¿Buscas algo en la plaza?','La arquitectura aquí es muy histórica.'] },
-        { key:'prado', name:'Museo del Prado', lat:40.4138, lon:-3.6921, type:'museum', dialog:['¿Le interesa un tour guiado?','Las pinturas de Velázquez son imprescindibles.'] },
-        { key:'retiro', name:'Parque del Retiro', lat:40.4153, lon:-3.6844, type:'park', dialog:['El parque es hermoso hoy, ¿verdad?','Puede alquilar una barca en el estanque.'] },
-        { key:'restaurant', name:'Cafetería Sol', lat:40.4168, lon:-3.7038, type:'food', dialog:['¿Qué le gustaría tomar?','Tenemos café recién hecho y tapas.'] }
       ]
     };
+
+    // OSM / Overpass settings for dynamic POI lookup
+    // We intentionally use a larger radius and bigger trigger to ingest more POIs per request
+    // and reduce the number of Overpass requests. Results are cached in-memory.
+    const OSM = {
+      api: 'https://overpass-api.de/api/interpreter',
+      // Increased fetch radius so the AI/discovery helper has a much larger inbox of POIs
+      radiusMeters: 10000, // fetch POIs within this radius (meters)
+      // Re-query when player moves outside the cached area by this distance
+      triggerMeters: 8000,
+      timeoutSec: 60
+    };
+    // Cached fetched areas: {lat, lon, radius}
+    const fetchedAreas = [];
+    // Seen OSM element ids to avoid reprocessing (format: `${type}/${id}`)
+    const seenOSMIds = new Set();
+    // How close to mark items as discovered
+    OSM.discoverMeters = 60;
+
+    // Global locale configuration for plug-and-play internationalization.
+    // Change these values to adapt the experience to any city/language pair.
+    const LOCALE = {
+      city: 'Madrid',
+      country: 'Spain',
+      targetLangName: 'Spanish',
+      targetLangISO: 'es',
+      baseLangName: 'English',
+      baseLangISO: 'en'
+    };
+
+    function applyLocale(){
+      const t = document.getElementById('appTitle');
+      if(t) t.textContent = `TravelSim ${LOCALE.city} – Language Learning Map Game`;
+      document.querySelectorAll('.localeCity').forEach(el => el.textContent = LOCALE.city);
+      document.querySelectorAll('.localeTargetLang').forEach(el => el.textContent = LOCALE.targetLangName);
+      document.querySelectorAll('.localeBaseLang').forEach(el => el.textContent = LOCALE.baseLangName);
+      const tl = document.getElementById('targetLangLabel');
+      if(tl) tl.textContent = `${LOCALE.targetLangName} (${LOCALE.targetLangISO})`;
+      const bl = document.getElementById('baseLangLabel');
+      if(bl) bl.textContent = `${LOCALE.baseLangName} (${LOCALE.baseLangISO})`;
+      const inp = document.getElementById('msgInput');
+      if(inp) inp.setAttribute('placeholder', `Type your message (${LOCALE.targetLangName} or ${LOCALE.baseLangName})…`);
+    }
+    applyLocale();
+
+    // Communication limit: if player is further than this from a POI, close its chat tab
+    const COMM = { maxDistanceMeters: 300 };
 
     /*****************************************************
      * STATE
@@ -224,8 +346,11 @@
 
     // Player position as Leaflet LatLng
     let playerLatLng = L.latLng(CONFIG.origin.lat, CONFIG.origin.lon);
-    // Nearby POIs cache (needs early declaration so functions referencing it before proximity setup do not hit TDZ)
-    let currentNearby = [];
+  // Nearby POIs cache (needs early declaration so functions referencing it before proximity setup do not hit TDZ)
+  let currentNearby = [];
+  // Dynamic POIs discovered at runtime (declare early to avoid TDZ / reference errors)
+  let dynamicPOIs = [];
+  let lastOverpassCenter = null;
 
     /*****************************************************
      * MAP INIT
@@ -244,13 +369,6 @@
       fillColor:'#ffba08',
       fillOpacity:.9
     }).addTo(map).bindTooltip('You', { permanent:true, direction:'right', offset:[10,0] });
-
-    // POI markers
-    const poiMarkers = CONFIG.pois.map(p => {
-      const m = L.marker([p.lat, p.lon]).addTo(map).bindPopup(`<strong>${p.name}</strong><br/><em>${p.type}</em>`);
-      m.poiData = p;
-      return m;
-    });
 
     /*****************************************************
      * UI HELPERS
@@ -272,6 +390,7 @@
     const helpPane = document.getElementById('helpPane');
     const closeHelp = document.getElementById('closeHelp');
   const elStudyList = document.getElementById('studyList');
+  const elStudySearch = document.getElementById('studySearch');
   const elExportCsvBtn = document.getElementById('exportCsvBtn');
   const elIncludeExportedChk = document.getElementById('includeExportedChk');
   const elClearExportFlagsBtn = document.getElementById('clearExportFlagsBtn');
@@ -311,25 +430,171 @@
       }
     }
 
+      // Use the AI to verify whether an objective has truly been completed based
+      // on the assistant's reply and the location/context of the conversation.
+      // Returns { completed: bool, confidence: 0..1, reason: string }
+      async function verifyObjectiveWithAI(poi, assistantText, objective){
+        try{
+          const poiName = poi?.name || 'unknown';
+          const poiTags = poi?.tags ? JSON.stringify(poi.tags) : 'none';
+          const dist = poi && poi._distanceMeters != null ? `${poi._distanceMeters}m` : 'unknown';
+          const playerLat = playerLatLng?.lat?.toFixed ? playerLatLng.lat.toFixed(5) : 'unknown';
+          const playerLon = playerLatLng?.lng?.toFixed ? playerLatLng.lng.toFixed(5) : 'unknown';
+          const sys = `You are a game adjudicator. Decide whether the NPC/interpreter response indicates that the player has completed the in-game objective. Only reply with a single JSON object and nothing else. The object must have keys: completed (true/false), confidence (number between 0 and 1), reason (short string). Use the assistant reply and the location context to decide. Be conservative: only return confidence > 0.7 if you are reasonably sure.`;
+          const user = `Objective: ${objective}\nPOI: ${poiName}\nPOI tags: ${poiTags}\nPOI distance from player: ${dist}\nPlayer coords: ${playerLat},${playerLon}\nAssistant reply: ${assistantText}`;
+          const msgs = [{role:'system', content: sys}, {role:'user', content: user}];
+          const aiResp = await callOpenAI(msgs);
+          if(!aiResp) return { completed:false, confidence:0, reason:'no-ai-response' };
+          // Expect JSON only; try to parse the content
+          try{
+            const parsed = JSON.parse(aiResp);
+            const completed = !!parsed.completed;
+            let confidence = parseFloat(parsed.confidence);
+            if(Number.isNaN(confidence)) confidence = (completed?0.9:0.4);
+            const reason = parsed.reason || (completed? 'AI judged objective complete' : 'AI judged not complete');
+            return { completed, confidence: Math.max(0, Math.min(1, confidence)), reason };
+          }catch(e){
+            // If AI didn't return strict JSON, attempt to find a yes/no and numeric
+            const lower = aiResp.toLowerCase();
+            const completed = /\b(yes|si|true|completed|done)\b/.test(lower);
+            const m = aiResp.match(/([0-9]*\.?[0-9]+)/);
+            const confidence = m ? Math.max(0, Math.min(1, parseFloat(m[1]))) : (completed?0.85:0.35);
+            return { completed, confidence, reason: aiResp.slice(0,200) };
+          }
+        }catch(err){ console.warn('verifyObjectiveWithAI failed', err); return { completed:false, confidence:0, reason:'error' }; }
+      }
+
     function log(role, text){
       const div = document.createElement('div');
       div.className='entry';
-      div.innerHTML = `<span class='role'>${role}:</span> ${highlightNewVocab(escapeHtml(text))}`;
+      const roleLabel = escapeHtml(role);
+      const roleKey = (role||'').toString().toLowerCase();
+  const stableRoles = ['system','you','user'];
+      let contentHtml = '';
+      if(stableRoles.includes(roleKey)){
+        contentHtml = escapeHtml(text);
+      } else if(roleKey === 'interpreter'){
+        // Interpreter: annotate only Spanish-like spans
+        const parts = [];
+        const spanishRun = /[A-Za-zÁÉÍÓÚÜÑáéíóúñü'’]+(?:[\s,.;:!?\-\(\)]+[A-Za-zÁÉÍÓÚÜÑáéíóúñü'’]+)*/g;
+        let lastIndex = 0; let mspan;
+        const t = text || '';
+        while((mspan = spanishRun.exec(t)) !== null){
+          if(mspan.index > lastIndex){ parts.push({text: t.slice(lastIndex, mspan.index), spanish:false}); }
+          parts.push({text: mspan[0], spanish:true});
+          lastIndex = spanishRun.lastIndex;
+        }
+        if(lastIndex < t.length) parts.push({text: t.slice(lastIndex), spanish:false});
+        contentHtml = parts.map(p => p.spanish ? highlightNewVocab(escapeHtml(p.text)) : escapeHtml(p.text)).join('');
+      } else {
+        contentHtml = highlightNewVocab(escapeHtml(text));
+      }
+      div.innerHTML = `<span class='role'>${roleLabel}:</span> ${contentHtml}`;
       elLog.appendChild(div);
       elLog.scrollTop = elLog.scrollHeight;
     }
+
+    // Verify multiple objectives at once. Returns array of { objective, completed, confidence, reason }
+    async function verifyObjectivesWithAI(poi, assistantText, objectives){
+      try{
+        const poiName = poi?.name || 'unknown';
+        const poiTags = poi?.tags ? JSON.stringify(poi.tags) : 'none';
+        const dist = poi && poi._distanceMeters != null ? `${poi._distanceMeters}m` : 'unknown';
+        const playerLat = playerLatLng?.lat?.toFixed ? playerLatLng.lat.toFixed(5) : 'unknown';
+        const playerLon = playerLatLng?.lng?.toFixed ? playerLatLng.lng.toFixed(5) : 'unknown';
+        const sys = `You are a game adjudicator. Given an assistant/interpreter reply and a list of candidate objectives for the current day, return a JSON array where each element has keys: objective (string), completed (true/false), confidence (0..1), reason (short string). Be conservative; only mark completed if you're reasonably sure.`;
+        const user = `POI: ${poiName}\nPOI tags: ${poiTags}\nPOI distance from player: ${dist}\nPlayer coords: ${playerLat},${playerLon}\nAssistant reply: ${assistantText}\n\nCandidate objectives:\n${objectives.map(o=>`- ${o}`).join('\n')}`;
+        const msgs = [{role:'system', content: sys}, {role:'user', content: user}];
+        const aiResp = await callOpenAI(msgs);
+        if(!aiResp) return objectives.map(o => ({ objective: o, completed:false, confidence:0, reason:'no-ai-response' }));
+        // Helper: strip code fences and extract first JSON array substring
+        function extractJSON(raw){
+          if(!raw) return null;
+          let txt = raw.trim();
+          // Remove single leading/trailing fenced block ```json ... ```
+          if(/^```/.test(txt)){
+            txt = txt.replace(/^```[a-zA-Z]*\n?/, '').replace(/```$/, '').trim();
+          }
+          // If it still contains fences inside, remove them naively
+          txt = txt.replace(/```[a-zA-Z]*\n([\s\S]*?)```/g, '$1');
+          // Locate first '[' and match brackets
+          const start = txt.indexOf('[');
+          if(start === -1) return null;
+          let depth = 0; let end = -1;
+            for(let i=start;i<txt.length;i++){
+              const c = txt[i];
+              if(c==='[') depth++;
+              else if(c===']'){
+                depth--; if(depth===0){ end = i; break; }
+              }
+            }
+          if(end === -1) return null;
+          const slice = txt.slice(start, end+1);
+          try{ return JSON.parse(slice); }catch(e){ return null; }
+        }
+        let parsed = extractJSON(aiResp);
+        if(Array.isArray(parsed)){
+          // Normalize elements; ensure booleans respected exactly
+          return parsed.map(p => ({
+            objective: typeof p.objective === 'string' ? p.objective : '',
+            completed: p.completed === true, // only true if explicitly true
+            confidence: Math.max(0, Math.min(1, typeof p.confidence === 'number' ? p.confidence : parseFloat(p.confidence||0) || 0)),
+            reason: typeof p.reason === 'string' ? p.reason : ''
+          }));
+        }
+        // Regex fallback: attempt to capture each object block to read completed flag safely.
+        const objRegex = /{[^}]*?"objective"\s*:\s*"([^"]+)"[^}]*?"completed"\s*:\s*(true|false)[^}]*?("confidence"\s*:\s*([0-9.]+))?[^}]*?("reason"\s*:\s*"([^"]*)")?[^}]*?}/g;
+        const matches = []; let m;
+        while((m = objRegex.exec(aiResp)) !== null){
+          matches.push({ objective: m[1], completed: m[2] === 'true', confidence: Math.max(0, Math.min(1, parseFloat(m[4]||'0'))), reason: m[6] || '' });
+        }
+        if(matches.length){ return matches; }
+        // Final safe fallback: nothing parsed; return all incomplete
+        return objectives.map(o => ({ objective: o, completed:false, confidence:0, reason:'unparsed-response' }));
+      }catch(err){ console.warn('verifyObjectivesWithAI failed', err); return objectives.map(o => ({ objective: o, completed:false, confidence:0, reason:'error' })); }
+    }
+
+    // Ask AI to generate a trip objectives plan (JSON array of days with objectives) before scenario init.
+    async function generateTripObjectives(){
+      try{
+  const sys = `You are a trip planner assistant. Generate a 5-day objectives plan for a language-learning trip in ${LOCALE.city}. Respond ONLY with strict JSON: { days: [ { id: 1, objectives: ["...","..."] }, ... ] }. Each day should have 3-5 concise objective strings focusing on travel actions and learning tasks (e.g., 'Exchange currency at a bank', 'Check-in at a hotel', 'Order coffee in ${LOCALE.targetLangName}', 'Learn 3 new words').`;
+  const user = `Produce objectives appropriate for a beginner-to-intermediate ${LOCALE.targetLangName} learner visiting ${LOCALE.city}. Do not include explanations.`;
+        const msgs = [{role:'system', content: sys}, {role:'user', content: user}];
+        const aiResp = await callOpenAI(msgs);
+        if(!aiResp) return null;
+        try{
+          const parsed = JSON.parse(aiResp);
+          if(parsed && Array.isArray(parsed.days)){
+            // Replace CONFIG.days and rebuild objectivesState
+            CONFIG.days = parsed.days.map(d => ({ id: d.id, objectives: d.objectives }));
+            objectivesState = CONFIG.days.map(day => day.objectives.map(o => ({ text:o, done:false })));
+            renderObjectives();
+            log('System', 'Objectives generated by AI and loaded.');
+            return parsed.days;
+          }
+        }catch(e){ console.warn('generateTripObjectives parse failed', e, aiResp); }
+      }catch(err){ console.warn('generateTripObjectives failed', err); }
+      return null;
+    }
+
+    // Keep a reference to the original visible log writer before we wrap `log` later
+    const originalLog = log;
 
     function escapeHtml(str){ return str.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 
     function highlightNewVocab(text){
       // Replace Spanish words with clickable spans; new words get special class.
+      // Be conservative: ignore very short tokens or pure punctuation to avoid annotating English UI text.
       return text.split(/(\s+)/).map(part => {
+        // keep punctuation-free raw letters for detection
         const raw = part.replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúñü]/g,'');
         const word = raw.toLowerCase();
-        if(raw && isSpanishWord(word)){
+        // skip annotation for empty, very short, or numeric tokens
+        if(!raw || raw.length <= 2 || /^\d+$/.test(raw)) return escapeHtml(part);
+        if(isSpanishWord(word)){
           const isNew = !discoveredWords.has(word);
-          if(isNew) discoveredWords.add(word), registerWord(word, part);
-          else registerWord(word, part);
+          if(isNew) discoveredWords.add(word);
+          registerWord(word, part);
           return `<span class='vocab-word ${isNew?"vocab-new":""}' data-word='${escapeHtml(word)}'>${escapeHtml(part)}</span>`;
         }
         return escapeHtml(part);
@@ -337,11 +602,158 @@
     }
 
     function isSpanishWord(word){
-      // Minimal heuristic: contains diacritic OR ends with typical Spanish vowel OR common articles
-      return /(á|é|í|ó|ú|ñ|ü)/i.test(word) || /(os|as|o|a|es)$/i.test(word) || ['el','la','los','las','un','una','unos','unas','y','de','que','en','por','para','con','como','muy','sí','no'].includes(word);
+      if(!word) return false;
+      const s = word.toLowerCase();
+      // If it contains Spanish-specific characters, count it as Spanish
+      if(/(á|é|í|ó|ú|ñ|ü)/i.test(s)) return true;
+      // Common short function words and articles
+      const commons = ['el','la','los','las','un','una','unos','unas','y','de','que','en','por','para','con','como','muy','sí','no','se','le','lo','su','sus','al','del'];
+      if(commons.includes(s)) return true;
+      // Common Spanish plural/ending patterns, and verb infinitives
+      const endings = ['os','as','o','a','es','ción','mente','dad','ado','ada','ido','ida','ible','ista','ar','er','ir','amiento','imiento','anza'];
+      if(endings.some(e => s.endsWith(e))) return true;
+      // Fallback: if the word has at least one vowel and length > 2, treat as potential Spanish
+      if(/[aeiouáéíóúü]/i.test(s) && s.length > 2) return true;
+      return false;
+    }
+
+    // Normalize strings for diacritic-insensitive comparison (e.g., 'cómo' -> 'como')
+    function stripDiacritics(str){
+      if(!str) return '';
+      // Use Unicode normalization and remove combining marks
+      return str.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
     }
 
     renderObjectives();
+
+  // Nearby tab state
+  const nearbyTabState = { selectedId: null }; // store dynamic POI id or null for general
+    const perPoiConversation = new Map(); // poiId -> conversation array
+    const generalConversation = []; // messages when general 'Nearby' tab is active
+  // Study list scroll/pagination state
+  let studyFiltered = [];
+  let studyOffset = 0;
+  const STUDY_PAGE = 5;
+
+    // Append a message to a thread (poiId=null -> general), store it, and render if that thread is active
+    function addMessageToThread(role, text, poiId=null){
+      const entry = { role, content: text, ts: Date.now() };
+      if(poiId){
+        const conv = perPoiConversation.get(poiId) || [];
+        conv.push(entry); if(conv.length > 200) conv.splice(0, conv.length - 200);
+        perPoiConversation.set(poiId, conv);
+        if(nearbyTabState.selectedId == poiId) renderConversation(poiId);
+        return conv;
+      } else {
+        generalConversation.push(entry); if(generalConversation.length > 400) generalConversation.splice(0, generalConversation.length - 400);
+        if(nearbyTabState.selectedId == null) renderConversation(null);
+        return generalConversation;
+      }
+    }
+
+    // Render a conversation into the chat log. poiId null = general thread
+    function renderConversation(poiId=null){
+      elLog.innerHTML = '';
+      const conv = poiId ? (perPoiConversation.get(poiId) || []) : generalConversation;
+      conv.forEach(m => {
+          const div = document.createElement('div');
+          div.className = 'entry';
+          const roleLabel = escapeHtml(m.role);
+          // Roles that must never show translations/annotated vocab: System and You
+      const stableRoles = ['system','you','user'];
+          const roleKey = (m.role||'').toString().toLowerCase();
+          let contentHtml = '';
+          if(stableRoles.includes(roleKey)){
+            // Render raw escaped content for system and user messages (no annotation)
+            contentHtml = escapeHtml(m.content);
+          } else if(roleKey === 'interpreter'){
+            // Interpreter is usually English; only annotate Spanish spans inside the message.
+            // Split into runs that look Spanish vs not and only highlight the Spanish runs.
+            const parts = [];
+            // Regex to match runs likely containing Spanish characters/words
+            const spanishRun = /[A-Za-zÁÉÍÓÚÜÑáéíóúñü'’]+(?:[\s,.;:!?\-\(\)]+[A-Za-zÁÉÍÓÚÜÑáéíóúñü'’]+)*/g;
+            let lastIndex = 0; let mspan;
+            const text = m.content || '';
+            while((mspan = spanishRun.exec(text)) !== null){
+              if(mspan.index > lastIndex){
+                parts.push({text: text.slice(lastIndex, mspan.index), spanish:false});
+              }
+              parts.push({text: mspan[0], spanish: true});
+              lastIndex = spanishRun.lastIndex;
+            }
+            if(lastIndex < text.length) parts.push({text: text.slice(lastIndex), spanish:false});
+            contentHtml = parts.map(p => p.spanish ? highlightNewVocab(escapeHtml(p.text)) : escapeHtml(p.text)).join('');
+          } else {
+            // Default: annotate (NPC and others). Use highlightNewVocab for annotation.
+            contentHtml = highlightNewVocab(escapeHtml(m.content));
+          }
+          div.innerHTML = `<span class='role'>${roleLabel}:</span> ${contentHtml}`;
+          elLog.appendChild(div);
+        });
+      elLog.scrollTop = elLog.scrollHeight;
+    }
+
+    function renderNearbyTabs(){
+      const container = document.getElementById('nearbyTabs');
+      if(!container) return;
+      container.innerHTML = '';
+      // 'Nearby' general chat tab
+      const general = document.createElement('div');
+      general.className = 'nearbyTab' + (nearbyTabState.selectedId===null ? ' selected' : '');
+      general.textContent = 'Nearby';
+      general.onclick = () => { nearbyTabState.selectedId = null; renderNearbyTabs(); renderConversation(null); };
+      container.appendChild(general);
+      // list currentNearby (already sorted by distance)
+      currentNearby.slice(0,8).forEach(p => {
+        // Don't render tabs for POIs outside communication range
+        if(p._distanceMeters && p._distanceMeters > COMM.maxDistanceMeters) return;
+        const d = document.createElement('div');
+        d.className = 'nearbyTab' + (nearbyTabState.selectedId===p._id || nearbyTabState.selectedId===p.id ? ' selected' : '');
+        d.textContent = `${p.name}` + (p._distanceMeters ? ` (${p._distanceMeters}m)` : '');
+        d.onclick = () => { nearbyTabState.selectedId = p.id || p._id; renderNearbyTabs(); renderConversation(nearbyTabState.selectedId); };
+        container.appendChild(d);
+      });
+    }
+
+    // Return a role-playing system prompt for a POI based on tags or name heuristics
+    function getPOISystemPrompt(poi){
+  if(!poi) return `You are a friendly local in ${LOCALE.city} helping a traveler with their questions in ${LOCALE.targetLangName}. You only know ${LOCALE.targetLangName} (${LOCALE.targetLangISO.toUpperCase()}). Provide concise responses.`;
+      const tags = poi.tags || {};
+      const amenity = (tags.amenity||'').toLowerCase();
+      const tourism = (tags.tourism||'').toLowerCase();
+      const shop = (tags.shop||'').toLowerCase();
+      const aeroway = (tags.aeroway||'').toLowerCase();
+      const nameLower = (poi.name||'').toLowerCase();
+      // Bank / currency exchange
+      if(poi?.key === 'bank' || /bank|banco|cambio/i.test(nameLower) || (poi?.tags && ((poi.tags.amenity||'').toLowerCase().includes('bank') || (poi.tags.shop||'').toLowerCase().includes('bureau_de_change')))){
+  return `You are a bank teller at a branch in ${LOCALE.city}. Assist the customer with currency exchange, withdrawals, and basic account inquiries in ${LOCALE.targetLangName}. Keep responses concise and stay in character.`;
+      }
+      // Hotel / lodging
+      if(tourism.includes('hotel') || /hotel/i.test(poi.name)){
+  return `You are the hotel front desk agent in ${LOCALE.city}. Greet the guest politely in ${LOCALE.targetLangName}, ask for reservation details and stay in character. Don't ask for personal information. Keep responses concise and helpful.`;
+      }
+      // Restaurant / cafe
+      if(['restaurant','cafe','bar','fast_food'].includes(amenity) || /cafe|bar|restaurante/i.test(poi.name)){
+  return `You are a restaurant/cafe staff member. Act in ${LOCALE.targetLangName}, take orders, suggest menu items, and be friendly. Keep responses concise.`;
+      }
+      // Shop
+      if(shop || /tienda|shop|supermercado|bakery|panader/i.test(poi.name)){
+  return `You are a shopkeeper in ${LOCALE.city}. Help the customer, discuss prices, accept payment, and offer small conversational phrases in ${LOCALE.targetLangName}, as you only know ${LOCALE.targetLangName} (${LOCALE.targetLangISO.toUpperCase()}). Keep responses concise and role-play realistic store interactions.`;
+      }
+      // Medical: differentiate hospitals and clinics
+      if(['hospital','doctors','healthcare','medical_centre','health_post'].includes(amenity) || /hospital|centro de salud|hospitalaria|hospitalidad/i.test(poi.name)){
+  return `You are staff at a hospital in ${LOCALE.city}. You are familiar with admissions, triage, and directing patients within a hospital. Speak in ${LOCALE.targetLangName}, be compassionate, provide next steps for care in-hospital, and remain in character; do not tell the user to \"call\" emergency services since they are already at a hospital. Keep responses concise and professional.`;
+      }
+      if(['clinic','health_post'].includes(amenity) || /clinic|clínica|consultorio/i.test(poi.name)){
+  return `You are a medical clinic staff member in ${LOCALE.city}. Respond in ${LOCALE.targetLangName}, ask about symptoms, offer basic triage advice, and direct the user to emergency services if necessary. Do not provide prescriptions; keep responses concise and compassionate.`;
+      }
+      // Airport / airline
+      if(aeroway.includes('aerodrome') || aeroway.includes('airport') || /aeropuerto|airport/i.test(poi.name)){
+  return `You are an airline check-in agent at ${LOCALE.city} airport. Ask for passport and flight details, check bags, and provide boarding information. Use ${LOCALE.targetLangName} primarily but clarify with brief ${LOCALE.baseLangName} when necessary.`;
+      }
+      // Default local NPC
+  return `You are a friendly local in ${LOCALE.city} helping a traveler with their questions in ${LOCALE.targetLangName}. You only know ${LOCALE.targetLangName} (${LOCALE.targetLangISO.toUpperCase()}). Provide concise responses.`;
+    }
 
     /*****************************************************
      * VOCAB STUDY SYSTEM
@@ -354,7 +766,7 @@
         wordStore[word] = {word, firstSeen:new Date().toISOString(), contexts:[context], saved:false, exported:false};
         persistWords();
       } else {
-        if(wordStore[word].contexts.length < 20 && !wordStore[word].contexts.includes(context)){
+        if(wordStore[word].contexts.length < 60 && !wordStore[word].contexts.includes(context)){
           wordStore[word].contexts.push(context);
           persistWords();
         }
@@ -377,19 +789,56 @@
 
     function persistWords(){ localStorage.setItem('ts_words', JSON.stringify(wordStore)); }
 
-    function renderStudyList(){
+    function renderStudyList(resetOffset=true){
       elStudyList.innerHTML = '';
-      const savedWords = Object.values(wordStore).filter(w => w.saved).sort((a,b)=>a.word.localeCompare(b.word));
-      savedWords.forEach(w => {
+      const q = (elStudySearch && elStudySearch.value || '').trim().toLowerCase();
+      const allSaved = Object.values(wordStore).filter(w => w.saved).sort((a,b)=>a.word.localeCompare(b.word));
+  // Use diacritic-insensitive matching so 'como' matches 'cómo'
+  const qnorm = stripDiacritics(q);
+  studyFiltered = q ? allSaved.filter(w => stripDiacritics(w.word).includes(qnorm) || stripDiacritics((w.contexts||[]).join(' ')).includes(qnorm)) : allSaved;
+      const elCount = document.getElementById('studyCount'); if(elCount) elCount.textContent = String(studyFiltered.length);
+      if(resetOffset) { studyOffset = 0; elStudyList.scrollTop = 0; }
+      // render a page worth of items
+      const page = studyFiltered.slice(studyOffset, studyOffset + STUDY_PAGE);
+      page.forEach(w => {
         const li = document.createElement('li');
         li.innerHTML = `<span class='word'>${w.word}</span><span style='display:flex; gap:4px;'>${w.exported?"<span class='statusChip ok' data-act='toggleExport' data-word='"+w.word+"' title='Exported (click to unset)'>✔</span>":""}<button class='small' data-act='unsave' data-word='${w.word}'>Remove</button></span>`;
         elStudyList.appendChild(li);
       });
-      if(!savedWords.length){
-        const li = document.createElement('li'); li.textContent='(No saved words yet)'; elStudyList.appendChild(li);
-      }
+  if(!studyFiltered.length){ const li = document.createElement('li'); li.textContent='(No saved words yet)'; elStudyList.appendChild(li); }
+  // Enforce a stable max-height and scrolling behavior so the study list always
+  // shows a scrollbar when content exceeds the visible area.
+  elStudyList.style.maxHeight = '220px';
+  elStudyList.style.overflow = 'auto';
+  // toggle overflowing class for faux scrollbar indicator (measure after styles applied)
+  if(elStudyList.scrollHeight > elStudyList.clientHeight) elStudyList.classList.add('overflowing'); else elStudyList.classList.remove('overflowing');
+      // if more pages remain, show a small indicator
+      if(studyOffset + STUDY_PAGE < studyFiltered.length){ const more = document.createElement('li'); more.style.opacity = '0.7'; more.style.fontSize = '.75rem'; more.textContent = 'Scroll to load more...'; elStudyList.appendChild(more); }
     }
     renderStudyList();
+
+    if(elStudySearch){ elStudySearch.addEventListener('input', () => renderStudyList()); }
+
+    // infinite scroll: load next page when near bottom
+    elStudyList.addEventListener('scroll', () => {
+      if(!studyFiltered || studyFiltered.length <= STUDY_PAGE) return;
+      const nearBottom = elStudyList.scrollTop + elStudyList.clientHeight >= elStudyList.scrollHeight - 20;
+      if(nearBottom && studyOffset + STUDY_PAGE < studyFiltered.length){
+        studyOffset += STUDY_PAGE;
+        // append next page
+        const page = studyFiltered.slice(studyOffset, studyOffset + STUDY_PAGE);
+        // remove the 'Scroll to load more...' placeholder if present
+        const last = elStudyList.lastElementChild; if(last && /Scroll to load more/.test(last.textContent)) last.remove();
+        page.forEach(w => {
+          const li = document.createElement('li');
+          li.innerHTML = `<span class='word'>${w.word}</span><span style='display:flex; gap:4px;'>${w.exported?"<span class='statusChip ok' data-act='toggleExport' data-word='"+w.word+"' title='Exported (click to unset)'>✔</span>":""}<button class='small' data-act='unsave' data-word='${w.word}'>Remove</button></span>`;
+          elStudyList.appendChild(li);
+        });
+  if(studyOffset + STUDY_PAGE < studyFiltered.length){ const more = document.createElement('li'); more.style.opacity = '0.7'; more.style.fontSize = '.75rem'; more.textContent = 'Scroll to load more...'; elStudyList.appendChild(more); }
+  // Recalculate overflowing after appending
+  if(elStudyList.scrollHeight > elStudyList.clientHeight) elStudyList.classList.add('overflowing'); else elStudyList.classList.remove('overflowing');
+      }
+    });
 
     // Tooltip handling
     let tooltipWord = null;
@@ -432,7 +881,7 @@
 
     async function fetchWordMeaning(wordObj){
       if(wordObj.definitionEs && wordObj.meaningEn) return; // already have
-      const prompt = `You are a bilingual glossary assistant. For the single Spanish word given, return a concise JSON object with keys SpanishDefinition (short definition in Spanish) and EnglishMeaning (short English meaning). Only output JSON.`;
+  const prompt = `You are a bilingual glossary assistant. For the single ${LOCALE.targetLangName} word given, return a concise JSON object with keys ${LOCALE.targetLangName}Definition (short definition in ${LOCALE.targetLangName}) and ${LOCALE.baseLangName}Meaning (short ${LOCALE.baseLangName} meaning). Only output JSON.`;
       const messages = [
         {role:'system', content: prompt},
         {role:'user', content: wordObj.word}
@@ -441,8 +890,13 @@
       if(resp){
         try {
           const json = JSON.parse(resp);
-          if(json.SpanishDefinition) wordObj.definitionEs = json.SpanishDefinition;
-          if(json.EnglishMeaning) wordObj.meaningEn = json.EnglishMeaning;
+          // Support both legacy keys (SpanishDefinition/EnglishMeaning) and dynamic ones (${LOCALE.targetLangName}Definition / ${LOCALE.baseLangName}Meaning)
+          const dynDefKey = `${LOCALE.targetLangName}Definition`;
+          const dynMeaningKey = `${LOCALE.baseLangName}Meaning`;
+          if(json[dynDefKey]) wordObj.definitionEs = json[dynDefKey];
+          else if(json.SpanishDefinition) wordObj.definitionEs = json.SpanishDefinition;
+          if(json[dynMeaningKey]) wordObj.meaningEn = json[dynMeaningKey];
+          else if(json.EnglishMeaning) wordObj.meaningEn = json.EnglishMeaning;
         } catch(err){
           // Fallback parsing: attempt simple split
           const parts = resp.split(/\n|-/).map(s=>s.trim()).filter(Boolean);
@@ -463,8 +917,8 @@
       for(const w of words){ await fetchWordMeaning(w); }
       const rows = ['Front,Back,Tags'];
       words.forEach(w => {
-        const back = `${w.definitionEs || ''} <br> English: ${w.meaningEn || ''}`;
-        rows.push(`${csvEscape(w.word)},${csvEscape(back)},${csvEscape('TravelSim;Spanish')}`);
+  const back = `${w.definitionEs || ''} <br> ${LOCALE.baseLangName}: ${w.meaningEn || ''}`;
+  rows.push(`${csvEscape(w.word)},${csvEscape(back)},${csvEscape('TravelSim;'+LOCALE.targetLangName)}`);
         w.exported = true;
       });
       persistWords(); renderStudyList();
@@ -487,19 +941,154 @@
    * PROXIMITY DETECTION
    *****************************************************/
     function updateNearby(){
-      currentNearby = poiMarkers.map(m => {
-        const dist = playerLatLng.distanceTo(m.getLatLng());
-        if(dist <= CONFIG.player.proximityMeters){ return m.poiData; }
-        return null;
-      }).filter(Boolean);
+      // Build a unified list of candidate POIs (static + dynamic) with distance
+      const candidates = [];
+      // Note: static POIs removed; we rely on dynamic OSM-loaded POIs only
+      // dynamic POIs discovered at runtime — use the actual POI object so its flags are present
+      dynamicPOIs.forEach(d => {
+        const latlng = L.latLng(d.lat, d.lon);
+        const dist = playerLatLng.distanceTo(latlng);
+        // data is the actual dynamic POI so checks like _discovered/_skippable work
+        candidates.push({ source:'dynamic', dist, data: d, lat: d.lat, lon: d.lon });
+      });
+
+      // Sort candidates by distance ascending
+      candidates.sort((a,b) => a.dist - b.dist);
+      const IMMEDIATE_PROXIMITY_METERS = 20; // show POI if within 20m even if not in general proximity radius
+
+      // Determine visible candidates based on skippable/discovered flags
+      const visible = [];
+      for(const c of candidates){
+        if(c.source === 'static'){
+          if(c.dist <= CONFIG.player.proximityMeters || c.dist <= IMMEDIATE_PROXIMITY_METERS) visible.push(c);
+          continue;
+        }
+        // dynamic POIs
+        const d = c.data;
+        // If skippable (e.g., aeroway holding_position/gate/navigationaid), only show when very close
+        if(d._skippable){
+          if(d._discovered){ visible.push(c); }
+          else if(c.dist <= OSM.discoverMeters){ d._discovered = true; visible.push(c); logDiscovery(d); }
+          // otherwise skip
+          continue;
+        }
+        // non-skippable dynamic POIs: mark discovered when within normal proximity or immediate proximity
+        if(d._discovered){ visible.push(c); continue; }
+        if(c.dist <= CONFIG.player.proximityMeters || c.dist <= IMMEDIATE_PROXIMITY_METERS){ d._discovered = true; visible.push(c); logDiscovery(d); continue; }
+      }
+
+      // Toggle visibility of dynamic POIs according to discovery rules
+      const visibleIds = new Set(visible.filter(c => c.source==='dynamic').map(c => c.data.id));
+      dynamicPOIs.forEach(d => {
+        if(visibleIds.has(d.id)) showDynamicPOI(d); else hideDynamicPOI(d);
+      });
+
+  // currentNearby should be an array of the nearby POI data objects ordered by closest first
+  currentNearby = visible.map(c => { c.data._distanceMeters = Math.round(c.dist); if(!c.data.id) c.data.id = c.data.id || c.data._id || c.data.key || c.data.name; return c.data; });
+
+  // Update nearby tabs UI
+  renderNearbyTabs();
+
+  // If the player has a POI tab selected but has moved out of communication range, close it
+  try{
+    const selected = nearbyTabState.selectedId;
+    if(selected){
+      // Prefer the currentNearby array which already contains measured distances
+      const near = currentNearby.find(p => p.id == selected || p._id == selected || p.name == selected || p.key == selected);
+      if(near){
+        const dist = near._distanceMeters || Math.round(playerLatLng.distanceTo(L.latLng(near.lat, near.lon)));
+        if(dist > COMM.maxDistanceMeters){
+          // Auto-close the POI tab so the player cannot remotely communicate
+          nearbyTabState.selectedId = null;
+          renderNearbyTabs();
+          renderConversation(null);
+        }
+      } else {
+        // No currentNearby entry found: attempt a fallback distance check via dynamicPOIs
+        const sel = dynamicPOIs.find(d => d.id == selected || d._id == selected || d.key == selected);
+        if(sel){
+          const dist = Math.round(playerLatLng.distanceTo(L.latLng(sel.lat, sel.lon)));
+          if(dist > COMM.maxDistanceMeters){
+            nearbyTabState.selectedId = null; renderNearbyTabs(); renderConversation(null);
+          }
+        }
+      }
+    }
+  }catch(e){ console.warn('comm range check failed', e); }
+
       if(currentNearby.length){
-        elNearby.textContent = 'Nearby: ' + currentNearby.map(p => p.name).join(', ');
+        // show only the nearest POI and its distance
+        const nearest = currentNearby[0];
+        const distLabel = nearest._distanceMeters != null ? ` (${nearest._distanceMeters}m)` : '';
+        elNearby.textContent = 'Nearby: ' + nearest.name + distLabel;
       } else {
         elNearby.textContent = 'Nearby: none';
       }
       updateSleepAvailability();
     }
     updateNearby();
+
+    // announce discoveries in chat
+    function logDiscovery(poi){
+      if(!poi) return;
+      // avoid duplicate messages
+      if(poi._discoveryAnnounced) return;
+      poi._discoveryAnnounced = true;
+      log('System', `Discovered: ${poi.name}`);
+    }
+
+    // Initial dynamic load: generate objectives (with timeout) then query OSM around starting position
+    (async function initDynamicLoad(){
+      try{
+        // Try to generate trip objectives before initializing the scenario UI.
+        // Use a short timeout so a slow/failed AI proxy won't block the game startup forever.
+        try{
+          const genPromise = generateTripObjectives();
+          const timeoutPromise = new Promise((res) => setTimeout(() => res(null), 10000)); // 10s fallback
+          const genResult = await Promise.race([genPromise, timeoutPromise]);
+          if(genResult === null){ console.warn('generateTripObjectives timed out (10s). Proceeding with default CONFIG.'); }
+        }catch(e){ console.warn('generateTripObjectives failed', e); }
+
+        // Continue with initial OSM load and update Nearby UI
+        queryNearbyOSMPOIs(playerLatLng.lat, playerLatLng.lng, OSM.radiusMeters)
+          .then(added => { if(added && added.length) updateNearby(); })
+          .catch(e => console.warn('Initial OSM load failed', e));
+      }catch(e){}
+    })();
+
+    // Try to detect meaningful outcomes from a POI conversation reply.
+    // Uses AI verification to decide whether to mark objectives.
+    async function detectPOIOutcome(poi, assistantText){
+      if(!assistantText) return;
+      const txt = assistantText.toLowerCase();
+      // Helper to verify several objectives at once and apply any that are confirmed
+      async function verifyAndApplyMultiple(candidates){
+        if(!candidates || !candidates.length) return;
+        try{
+          const results = await verifyObjectivesWithAI(poi, assistantText, candidates);
+          results.forEach(r => {
+            const LOG_CONF_THRESHOLD = 0.3;
+            if(r.completed && r.confidence >= 0.7){
+              markObjective(r.objective);
+              if(poi){ poi._discovered = true; poi._unlocked = true; showDynamicPOI(poi); }
+              log('System', `Objective updated: ${r.objective}`);
+            } else if(r.confidence >= LOG_CONF_THRESHOLD){
+              console.debug('[ObjectiveVerification] Not completed:', {
+                objective: r.objective,
+                confidence: r.confidence,
+                reason: r.reason
+              });
+            } // else suppress very low-confidence noise
+          });
+        }catch(e){ console.warn('verifyAndApplyMultiple error', e); }
+      }
+
+      // For fully-dynamic AI adjudication, verify all current-day incomplete objectives against the assistant reply.
+      try{
+        const dayObjs = objectivesState[currentDayIndex].filter(o => !o.done).map(o => o.text);
+        if(dayObjs && dayObjs.length){ await verifyAndApplyMultiple(dayObjs); }
+      }catch(e){ console.warn('Objective verification failed', e); }
+    }
 
     /*****************************************************
      * MOVEMENT
@@ -583,6 +1172,78 @@
       lastFrameTs = performance.now();
     }
 
+    function setPlayerPosition(latlng){
+      playerLatLng = latlng;
+      playerMarker.setLatLng(playerLatLng);
+      elPlayerPos.textContent = `Pos: ${playerLatLng.lat.toFixed(5)}, ${playerLatLng.lng.toFixed(5)}`;
+      updateNearby();
+      // Trigger OSM POI fetch when we've moved a decent distance from last query center
+      try {
+        // only query if we're outside any previously fetched area by trigger threshold
+        const need = !fetchedAreas.some(a => playerLatLng.distanceTo(L.latLng(a.lat,a.lon)) <= a.radius - 40);
+        if(need){
+          lastOverpassCenter = playerLatLng;
+          queryNearbyOSMPOIs(playerLatLng.lat, playerLatLng.lng, OSM.radiusMeters).catch(err => console.warn('OSM query failed', err));
+        }
+      } catch(e){ console.error('Overpass trigger error', e); }
+    }
+
+    async function queryNearbyOSMPOIs(lat, lon, radius){
+      // store fetched area to avoid redundant nearby queries
+      fetchedAreas.push({ lat, lon, radius });
+      // Build Overpass QL to find amenities/tourism/shop/aeroway within radius
+      // limit to tags we care about (hotels, restaurants, cafes, shops, aeroway, etc.) to reduce payload
+      const q = `[
+        out:json][timeout:${OSM.timeoutSec}];(
+          node(around:${radius},${lat},${lon})[amenity~"^(restaurant|cafe|bar|pub|fast_food|bench|bank|fuel|taxi|hospital|clinic|clinic|clinic)$"];
+          node(around:${radius},${lat},${lon})[tourism~"^(hotel|hostel|motel|guest_house)$"];
+          node(around:${radius},${lat},${lon})[shop~"^(bakery|supermarket|convenience|mall|clothes|mall|shoes|coffee|tea)$"];
+          node(around:${radius},${lat},${lon})[aeroway];
+          way(around:${radius},${lat},${lon})[amenity~"^(restaurant|cafe|bar|pub|fast_food)$"];
+          way(around:${radius},${lat},${lon})[tourism~"^(hotel|hostel|motel)$"];
+          way(around:${radius},${lat},${lon})[shop~"^(bakery|supermarket|convenience|mall|coffee)$"];
+        );out center;`;
+      const res = await fetch(OSM.api, { method:'POST', body: q, headers:{ 'Content-Type':'text/plain' } });
+      if(!res.ok) throw new Error('Overpass response '+res.status);
+      const data = await res.json();
+      // Parse elements and merge
+      const added = [];
+      (data.elements || []).forEach(el => {
+        const elKey = `${el.type}/${el.id}`;
+        if(seenOSMIds.has(elKey)) return; // already processed
+        seenOSMIds.add(elKey);
+        // determine a lat/lon for node or way(center)
+        const latEl = el.lat || (el.center && el.center.lat);
+        const lonEl = el.lon || (el.center && el.center.lon);
+        if(!latEl || !lonEl) return;
+        // Filter interesting tags: cafe/restaurant/hotel/airport/shop/bus_station etc.
+        const tags = el.tags || {};
+        const kind = (tags.amenity || tags.tourism || tags.shop || tags.aeroway || '').toLowerCase();
+        const name = tags.name || tags['name:en'] || `OSM ${kind || el.type}`;
+        // skip skippable OSM features entirely (navigation aids, gates, holding positions)
+        if(isSkippableOSMTag(tags)) return;
+
+        // dedupe: skip if we already have a dynamicPOI with same name & approx coords
+        const exists = dynamicPOIs.some(d => d.name === name && Math.abs(d.lat - latEl) < 0.0003 && Math.abs(d.lon - lonEl) < 0.0003);
+        if(exists) return;
+  const poi = addDynamicPOI({ name, lat: latEl, lon: lonEl, description: kind || JSON.stringify(tags), confidence:'precise', tags: tags });
+        // dynamic POIs loaded from OSM are not considered 'discovered' until player gets close
+        poi._osm = true;
+        poi._discovered = false;
+        // mark skippable items (don't show as nearby until very close)
+        poi._skippable = isSkippableOSMTag(tags);
+        // attach tags for later filtering
+        poi.tags = tags; added.push(poi);
+      });
+  // do not log the raw OSM load to avoid chat spam; discoveries will be announced when they become visible.
+      // Purge any previously-added OSM-derived skippable POIs from dynamicPOIs (remove their layers first)
+    dynamicPOIs.forEach(d => { if(d._osm && d._skippable){ hideDynamicPOI(d); } });
+  dynamicPOIs = dynamicPOIs.filter(d => !(d._osm && d._skippable));
+    // After adding POIs, update nearby state so tabs and visibility reflect newly-loaded items
+    try{ updateNearby(); }catch(e){}
+    return added;
+    }
+
     function animateRoute(dt){
       if(!activeRoute) return;
       const speed = CONFIG.movement.routeSpeedMps; // meters per second
@@ -596,7 +1257,7 @@
         remainingDt = 0; // consume dt (loop handles leftover when segment boundary crossed)
         if(activeRouteSegmentProgress >= segLen){
           // move to segment end
-          playerLatLng = p2;
+          setPlayerPosition(p2);
           activeRouteSegmentIdx++;
           activeRouteSegmentProgress = 0;
           if(activeRouteSegmentIdx >= activeRoute.length - 1){
@@ -615,12 +1276,10 @@
           const ratio = activeRouteSegmentProgress / segLen;
           const lat = p1.lat + (p2.lat - p1.lat)*ratio;
           const lon = p1.lng + (p2.lng - p1.lng)*ratio;
-          playerLatLng = L.latLng(lat, lon);
+          setPlayerPosition(L.latLng(lat, lon));
         }
       }
-      playerMarker.setLatLng(playerLatLng);
-      elPlayerPos.textContent = `Pos: ${playerLatLng.lat.toFixed(5)}, ${playerLatLng.lng.toFixed(5)}`;
-      updateNearby();
+      // setPlayerPosition already updated marker/nearby in the loop
     }
 
     function stepMovement(ts){
@@ -640,11 +1299,10 @@
 
     elCenterBtn.addEventListener('click', () => map.setView(playerLatLng));
     elResetBtn.addEventListener('click', () => {
-      playerLatLng = L.latLng(CONFIG.origin.lat, CONFIG.origin.lon);
-      playerMarker.setLatLng(playerLatLng);
+      const p = L.latLng(CONFIG.origin.lat, CONFIG.origin.lon);
+      setPlayerPosition(p);
       map.setView(playerLatLng, CONFIG.origin.zoom);
       log('System','Player reset to origin.');
-      updateNearby();
     });
 
     /*****************************************************
@@ -654,16 +1312,37 @@
       // Mark relevant objectives automatically based on day and poi
       autoObjectiveProgress(poi);
       // Provide an initial Spanish line
-      const line = sample(poi.dialog);
+      let line;
+      if(poi && Array.isArray(poi.dialog) && poi.dialog.length){
+        line = sample(poi.dialog);
+      } else {
+        // dynamic or unknown POI - provide a generic friendly line using its name/description
+        const desc = poi && (poi.description || poi.name) ? ` acerca de ${poi.name || ''}` : '';
+        const templates = [
+          `¡Hola! ¿En qué puedo ayudarte${desc}?`,
+          `¡Buenas! ¿Buscas información sobre ${poi && poi.name ? poi.name : 'este lugar'}?`,
+          `Hola, ¿necesitas algo relacionado con ${poi && poi.name ? poi.name : 'este sitio'}?`
+        ];
+        line = sample(templates);
+      }
       lastNPCSpanish = line;
       log(poi.name, line);
+      // Run objective detection for this initial NPC line (do not block UI heavily)
+      try{ detectPOIOutcome(poi, line); }catch(e){ console.warn('detectPOIOutcome on open failed', e); }
     }
 
     function autoObjectiveProgress(poi){
       const day = currentDayIndex + 1;
       if(day === 1){
-        if(poi.key==='airport') markObjective('Arrive at the airport');
-        if(poi.key==='hotel'){ 
+        // detect airport/hotel by tag or name as well as legacy poi.key
+        const name = (poi && poi.name) ? (poi.name||'').toLowerCase() : '';
+        const tags = (poi && poi.tags) ? poi.tags : {};
+        const tourism = (tags.tourism||'').toLowerCase();
+        const amenity = (tags.amenity||'').toLowerCase();
+        const isAirport = poi && (poi.key==='airport' || tourism.includes('airport') || amenity.includes('airport') || /aerop|aeropuerto|airport/i.test(name));
+        const isHotel = poi && (poi.key==='hotel' || tourism.includes('hotel') || /hotel|hostel|inn|motel/i.test(name));
+        if(isAirport) markObjective('Arrive at the airport');
+        if(isHotel){ 
           markObjective('Travel to the hotel');
           markObjective('Check-in conversation at the hotel');
         }
@@ -687,8 +1366,10 @@
 
     // Simulated AI responses
     // === OpenAI Integration (Requested) ===
-    // OpenAI key now loaded server-side via .env; front-end calls proxy endpoint.
-    const OPENAI_MODEL = 'gpt-4o-mini'; // lightweight model suggestion
+  // OpenAI key now loaded server-side via .env; front-end calls proxy endpoint.
+  const OPENAI_MODEL = 'gpt-4o-mini'; // lightweight model suggestion
+  // Debug UI flag: set true to append verbose AI request payload to the in-app log (default off)
+  const DEBUG_UI_REQUESTS = false;
     const MAX_CONTEXT = 10; // per role
     const npcConversation = []; // {role, content}
     const interpreterConversation = []; // {role, content}
@@ -706,10 +1387,51 @@
     async function callOpenAI(messages){
       try {
         const url = new URL('/api/chat', API_BASE).toString();
+        // Build a short, neutral system context about player location and objectives to help the AI respond appropriately.
+        // Important: do NOT assume the player is arriving, leaving, or actively performing objectives unless they state so.
+        let locationContext = '';
+        try {
+          const lat = playerLatLng?.lat?.toFixed ? playerLatLng.lat.toFixed(5) : 'unknown';
+          const lon = playerLatLng?.lng?.toFixed ? playerLatLng.lng.toFixed(5) : 'unknown';
+          const nearbyNames = (currentNearby && currentNearby.length) ? currentNearby.map(p=>p.name).join(', ') : 'none';
+          const nearest = (currentNearby && currentNearby.length) ? currentNearby[0].name : 'none';
+          const day = (typeof currentDayIndex !== 'undefined') ? (currentDayIndex+1) : 'unknown';
+          const objList = (objectivesState && objectivesState[currentDayIndex]) ? objectivesState[currentDayIndex].map(o => `${o.done? '[done]':'[todo]'} ${o.text}`).join('; ') : '';
+          locationContext = `Player location: lat=${lat}, lon=${lon}; Nearest: ${nearest}; Nearby: ${nearbyNames}; Day: ${day}; Day objectives (background only): ${objList}`;
+        } catch(e){ locationContext = 'Player location: unknown'; }
+
+        const systemContextMsg = `Scene context (background only): ${locationContext}. IMPORTANT: Do not infer the player's intent to arrive or leave, and do not assume they are performing any objective unless they explicitly say so.`;
+        // If the caller already supplied a system prompt (e.g., POI role prompt), don't prepend another system message
+        // because repeated system messages can confuse or bloat the payload. Instead, append a concise background
+        // context as a normal user message so the model still sees current location info without resending role instructions.
+        const hasSystemInMessages = (messages||[]).some(m => m && m.role === 'system');
+        let augmentedMessages;
+        if(hasSystemInMessages){
+          // Include a short background context as a lightweight user message
+          const bgMsg = { role: 'user', content: `BACKGROUND: ${systemContextMsg}` };
+          augmentedMessages = [...messages, bgMsg];
+        } else {
+          // No system prompt provided by caller — send the context as system role (once)
+          augmentedMessages = [{ role:'system', content: systemContextMsg }, ...messages];
+        }
+
+        // Verbose debug: log the augmented messages and request body
+        try{
+          console.groupCollapsed('TravelSim: OpenAI request');
+          console.log('API URL:', url);
+          console.log('Augmented messages (system + payload):', augmentedMessages);
+          const requestBody = { model: OPENAI_MODEL, messages: augmentedMessages };
+          console.log('Request body:', requestBody);
+          console.groupEnd();
+          // Small UI-visible debug line (truncated)
+          const dbg = `AI REQ: ${JSON.stringify(requestBody).slice(0,1000)}${JSON.stringify(requestBody).length>1000? '...[truncated]':''}`;
+          if(DEBUG_UI_REQUESTS) log('System', dbg);
+        }catch(e){ console.error('Debug log failed', e); }
+
         const res = await fetch(url, {
           method:'POST',
           headers:{ 'Content-Type':'application/json' },
-          body: JSON.stringify({ model: OPENAI_MODEL, messages })
+          body: JSON.stringify({ model: OPENAI_MODEL, messages: augmentedMessages })
         });
         if(!res.ok){
           const text = await res.text();
@@ -727,6 +1449,23 @@
       arr.push(item); if(arr.length > MAX_CONTEXT) arr.splice(0, arr.length - MAX_CONTEXT);
     }
 
+    // Map stored thread entries (which use friendly role labels like 'You', 'NPC', 'Interpreter', 'System')
+    // to OpenAI-compatible roles: 'user', 'assistant', 'system'.
+    function threadToApiMessages(conv){
+      // Filter out stored 'system' messages from conversation history to avoid duplicating system prompts
+      const filtered = (conv||[]).filter(m => !(m && (m.role||'').toString().toLowerCase() === 'system'));
+      return filtered.map(m => {
+        const r = (m.role||'').toString().toLowerCase();
+        let apiRole = 'user';
+        if(r === 'system') apiRole = 'system';
+        else if(r === 'you' || r === 'user') apiRole = 'user';
+        else if(r === 'npc' || r === 'assistant' || r === 'interpreter') apiRole = 'assistant';
+        // fallback: allow 'function' or 'tool' if present
+        else if(['function','tool','developer'].includes(r)) apiRole = r;
+        return { role: apiRole, content: m.content };
+      }).filter(m => m && m.content != null);
+    }
+
     function isEnglishMessage(msg){
       const lower = msg.toLowerCase();
       const spanishHints = /(¿|¡|ñ|á|é|í|ó|ú|\bque\b|\bcomo\b|\buna?\b|\bpor\b|\bpara\b|\bcon\b|\bgracias\b)/;
@@ -737,19 +1476,26 @@
       return !spanishHints.test(lower) && ratio > 0.2; // heuristic threshold
     }
 
-    async function npcResponse(userMsg){
-      const systemPrompt = `You are a friendly local in Madrid helping a traveler practice Spanish. Stay mostly in Spanish (ES). Provide concise responses. If giving directions, you may include coordinates or cardinal + distance steps. Avoid English unless clarifying a Spanish word briefly with a single English word.`;
-      pushLimited(npcConversation, {role:'user', content:userMsg});
-      const history = [{role:'system', content: systemPrompt}, ...npcConversation];
+    async function npcResponse(userMsg, poiId=null){
+  const systemPrompt = `You are a friendly local in ${LOCALE.city} helping a traveler practice ${LOCALE.targetLangName}. Stay mostly in ${LOCALE.targetLangName} (${LOCALE.targetLangISO.toUpperCase()}). Provide concise responses. If giving directions, you may include coordinates or cardinal + distance steps. Avoid ${LOCALE.baseLangName} unless clarifying a ${LOCALE.targetLangName} word briefly with a single ${LOCALE.baseLangName} word.`;
+  const conv = poiId ? (perPoiConversation.get(poiId) || []) : npcConversation;
+  // Avoid duplicate user message insert if log('You', ...) already recorded it
+  const last = conv[conv.length-1];
+  if(!(last && (last.role||'').toString().toLowerCase() === 'you' && last.content === userMsg) && !(last && (last.role||'').toString().toLowerCase() === 'user' && last.content === userMsg)){
+    pushLimited(conv, {role:'user', content:userMsg});
+    if(poiId) perPoiConversation.set(poiId, conv);
+  }
+  const poi = poiId ? dynamicPOIs.find(d => d.id == poiId) : null;
+  const poiPrompt = poi ? getPOISystemPrompt(poi) : systemPrompt;
+  const history = [{role:'system', content: poiPrompt}, ...threadToApiMessages(conv)];
       if(isEnglishMessage(userMsg)){
         const resp = 'Lo siento, no entiendo bien el inglés aquí. ¿Puedes escribirlo en español, por favor?';
-        pushLimited(npcConversation, {role:'assistant', content:resp});
         lastNPCSpanish = resp;
         log('NPC', resp);
         checkNewWords(resp);
         return;
       }
-      const ai = await callOpenAI(history);
+  const ai = await callOpenAI(history);
       let resp = ai;
       if(!resp){
         // Fallback stub
@@ -760,17 +1506,24 @@
         ];
         resp = sample(templates);
       }
-      pushLimited(npcConversation, {role:'assistant', content:resp});
-      lastNPCSpanish = resp;
-      log('NPC', resp);
-      checkNewWords(resp);
+  // Add assistant reply using unified log() so it's recorded once in the visible log and the active thread
+  lastNPCSpanish = resp;
+  log('NPC', resp);
+    checkNewWords(resp);
+    // Detect outcomes (e.g., hotel check-in completed) from assistant reply and apply game effects (await verifier)
+    try{ const poiObj = poiId ? dynamicPOIs.find(d => d.id == poiId) : null; await detectPOIOutcome(poiObj, resp); }catch(e){}
     }
 
-    async function interpreterResponse(userMsg){
-      const systemPrompt = `You are an interpreter helping a user learn Spanish. Respond in clear English. Provide brief grammatical explanations when asked. If user pastes Spanish, translate then explain one key grammar or vocab point.`;
-      pushLimited(interpreterConversation, {role:'user', content:userMsg});
-      const history = [{role:'system', content: systemPrompt}, ...interpreterConversation];
-      const ai = await callOpenAI(history);
+    async function interpreterResponse(userMsg, poiId=null){
+  const systemPrompt = `You are an interpreter helping a user learn ${LOCALE.targetLangName}. Respond in clear ${LOCALE.baseLangName}. Provide brief grammatical explanations when asked. If user pastes ${LOCALE.targetLangName}, translate then explain one key grammar or vocab point.`;
+      const conv = poiId ? (perPoiConversation.get(poiId) || []) : interpreterConversation;
+      const last = conv[conv.length-1];
+      if(!(last && (last.role||'').toString().toLowerCase() === 'you' && last.content === userMsg) && !(last && (last.role||'').toString().toLowerCase() === 'user' && last.content === userMsg)){
+        pushLimited(conv, {role:'user', content:userMsg});
+        if(poiId) perPoiConversation.set(poiId, conv);
+      }
+  const history = [{role:'system', content: systemPrompt}, ...threadToApiMessages(conv)];
+  const ai = await callOpenAI(history);
       let resp = ai;
       if(!resp){
         const explanations = [
@@ -781,15 +1534,17 @@
         ];
         resp = sample(explanations);
       }
-      pushLimited(interpreterConversation, {role:'assistant', content:resp});
-      log('Interpreter', resp);
-      markObjectiveProgressByLearning();
+    // Let log(...) add the assistant/interpreter reply to the active thread
+    log('Interpreter', resp);
+    markObjectiveProgressByLearning();
+    // Run objective detection for interpreter replies as well (await verifier)
+    try{ const poiObj = poiId ? dynamicPOIs.find(d => d.id == poiId) : null; await detectPOIOutcome(poiObj, resp); }catch(e){}
     }
 
     async function translateLast(){
       if(!lastNPCSpanish){ log('System','No NPC line to translate yet.'); return; }
       const messages = [
-        {role:'system', content:'Translate the following Spanish text to clear English and list any notable vocabulary words.'},
+  {role:'system', content:`Translate the following ${LOCALE.targetLangName} text to clear ${LOCALE.baseLangName} and list any notable vocabulary words.`},
         {role:'user', content:lastNPCSpanish}
       ];
       const ai = await callOpenAI(messages);
@@ -863,17 +1618,30 @@
 
     elNPCBtn.addEventListener('click', () => {
       const msg = elMsg.value.trim(); if(!msg) return;
-      log('You', msg);
       const v = msg; elMsg.value='';
-      withBusy(() => npcResponse(v));
+      const poiId = nearbyTabState.selectedId || null;
+  // add message to the active thread and visible log via unified log()
+  log('You', v);
+      withBusy(() => npcResponse(v, poiId));
     });
     elInterpreterBtn.addEventListener('click', () => {
       const msg = elMsg.value.trim(); if(!msg) return;
-      log('You', msg);
       const v = msg; elMsg.value='';
-      withBusy(() => interpreterResponse(v));
+      const poiId = nearbyTabState.selectedId || null;
+  log('You', v);
+      if(poiId){ withBusy(() => interpreterResponse(v, poiId)); }
+      else { withBusy(() => interpreterResponse(v, null)); }
     });
     elTranslateBtn.addEventListener('click', () => withBusy(() => translateLast()));
+    const elDiscoverBtn = document.getElementById('discoverBtn');
+    if(elDiscoverBtn){ elDiscoverBtn.addEventListener('click', () => withBusy(() => {
+      const name = prompt('Discover POI by name (enter name or name + \'@lat,lon\'):');
+      if(!name) return;
+      // allow 'Name@lat,lon' shorthand
+      const m = name.match(/^(.*)@\s*([\-\d\.]+)\s*,\s*([\-\d\.]+)\s*$/);
+      if(m){ discoverPOIByName({ name: m[1].trim(), lat: parseFloat(m[2]), lon: parseFloat(m[3]) }); }
+      else { discoverPOIByName({ name: name.trim() }); }
+    })); }
     elMsg.addEventListener('keydown', e => { if(e.key==='Enter'){ e.preventDefault(); elNPCBtn.click(); } });
 
     /*****************************************************
@@ -884,51 +1652,94 @@
 
     // Accordion / collapsible panels
     document.querySelectorAll('.collapseToggle').forEach(btn => {
+      const panelId = btn.dataset.panel;
+      const panel = document.getElementById(panelId);
+      // ensure the button is interactive even though the hud container is pointer-events:none
+      btn.style.pointerEvents = 'auto';
+      btn.setAttribute('aria-controls', panelId);
+      // initialize aria-expanded based on current panel state
+      const expanded = panel && !panel.classList.contains('collapsed');
+      btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
       btn.addEventListener('click', () => {
-        const panel = document.getElementById(btn.dataset.panel);
-        if(panel){ panel.classList.toggle('collapsed'); }
+        if(!panel) return;
+        const nowCollapsed = panel.classList.toggle('collapsed');
+        btn.setAttribute('aria-expanded', nowCollapsed ? 'false' : 'true');
       });
     });
+
+    // Chat panel resize via drag handle
+    (function(){
+      const grab = document.getElementById('chatGrab');
+      const panel = document.getElementById('chatPanel');
+      if(!grab || !panel) return;
+      const minH = 120, maxH = Math.max(220, window.innerHeight - 120);
+      // restore saved height
+      const saved = parseInt(localStorage.getItem('ts_chat_height')||'0',10);
+      if(saved && saved >= minH && saved <= maxH) panel.style.height = saved + 'px';
+      let dragging = false;
+      let startY = 0, startH = 0;
+      function begin(e){ dragging = true; startY = (e.touches ? e.touches[0].clientY : e.clientY); startH = panel.getBoundingClientRect().height; document.body.style.userSelect='none'; }
+      function move(e){ if(!dragging) return; const y = (e.touches ? e.touches[0].clientY : e.clientY); const dy = startY - y; let h = startH + dy; if(h < minH) h = minH; if(h > maxH) h = maxH; panel.style.height = h + 'px'; }
+      function end(){ if(!dragging) return; dragging=false; localStorage.setItem('ts_chat_height', parseInt(panel.getBoundingClientRect().height,10)); document.body.style.userSelect='auto'; }
+      grab.addEventListener('mousedown', begin); window.addEventListener('mousemove', move); window.addEventListener('mouseup', end);
+      grab.addEventListener('touchstart', begin, {passive:true}); window.addEventListener('touchmove', move, {passive:true}); window.addEventListener('touchend', end);
+    })();
 
     /*****************************************************
      * INITIAL LOG ENTRIES
      *****************************************************/
-    log('System','Welcome to TravelSim Madrid. Approach the Airport marker and interact to begin.');
-    log('System','Day 1 objective: arrive, reach hotel, check-in, then sleep.');
+    // Welcome messages should persist in the Nearby/general thread so they are not lost when tabs change.
+  originalLog('System',`Welcome to TravelSim ${LOCALE.city}. Approach the Airport marker and interact to begin.`);
+  addMessageToThread('System',`Welcome to TravelSim ${LOCALE.city}. Approach the Airport marker and interact to begin.`, null);
+    originalLog('System','Day 1 objective: arrive, reach hotel, check-in, then sleep.');
+    addMessageToThread('System','Day 1 objective: arrive, reach hotel, check-in, then sleep.', null);
 
     /*****************************************************
      * DYNAMIC POI & ROUTE INSTRUCTIONS (NEW FEATURE)
      *****************************************************/
-    const dynamicLayerGroup = L.layerGroup().addTo(map);
-    const routeLayerGroup = L.layerGroup().addTo(map);
-    const dynamicPOIs = []; // {id,name,confidence,lat,lon,markerOrCircle}
+  const dynamicLayerGroup = L.layerGroup().addTo(map);
+  const routeLayerGroup = L.layerGroup().addTo(map);
     let dynamicPoiId = 1;
-
-    function addDynamicPOI({name, lat, lon, description='', confidence='precise'}){
+    // Do not add layers to the map until a POI is 'discovered'. Instead create the layer object but keep it detached.
+    function addDynamicPOI({name, lat, lon, description='', confidence='precise', tags=null}){
       const id = dynamicPoiId++;
       let layer;
-      if(confidence === 'precise'){
-        layer = L.marker([lat, lon], {title:name}).addTo(dynamicLayerGroup)
+      if(tags){
+        const color = getPOIColor(tags);
+        layer = L.circleMarker([lat, lon], {radius:8, color:color, weight:2, fillColor:color, fillOpacity:0.9})
+          .bindPopup(`<strong>${escapeHtml(name)}</strong><br/>${escapeHtml(description)}`);
+      } else if(confidence === 'precise'){
+        layer = L.marker([lat, lon], {title:name})
           .bindPopup(`<strong>${escapeHtml(name)}</strong><br/>${escapeHtml(description)}`);
       } else {
         // Approximate: show a semi-transparent circle (radius ~400m) until refined
         layer = L.circle([lat, lon], {radius:400, color:'#ffb703', weight:2, fillColor:'#ffb703', fillOpacity:0.25})
-          .addTo(dynamicLayerGroup).bindPopup(`<strong>${escapeHtml(name)}</strong><br/>Approximate area<br/>${escapeHtml(description)}`);
+          .bindPopup(`<strong>${escapeHtml(name)}</strong><br/>Approximate area<br/>${escapeHtml(description)}`);
       }
-      const poi = {id, name, lat, lon, confidence, layer, description};
+      const poi = {id, name, lat, lon, confidence, layer, description, _visible:false};
+      if(tags) poi.tags = tags;
       dynamicPOIs.push(poi);
-      log('System', `Dynamic POI added (${confidence}): ${name}`);
+      // log('System', `Dynamic POI added (buffered): ${name}`);
       return poi;
     }
 
     function refineDynamicPOI(id, {lat, lon, confidence='precise', description}){
       const poi = dynamicPOIs.find(p => p.id === id);
       if(!poi){ log('System', `Cannot refine POI id ${id} (not found).`); return; }
-      dynamicLayerGroup.removeLayer(poi.layer);
+      // If it was visible, remove old layer from map
+      if(poi._visible){ dynamicLayerGroup.removeLayer(poi.layer); poi._visible = false; }
       poi.lat = lat; poi.lon = lon; poi.confidence = confidence; if(description) poi.description = description;
-      poi.layer = L.marker([lat, lon], {title:poi.name}).addTo(dynamicLayerGroup)
-        .bindPopup(`<strong>${escapeHtml(poi.name)}</strong><br/>${escapeHtml(poi.description)}`);
-      log('System', `POI refined to precise location: ${poi.name}`);
+      poi.layer = L.marker([lat, lon], {title:poi.name}).bindPopup(`<strong>${escapeHtml(poi.name)}</strong><br/>${escapeHtml(poi.description)}`);
+      // log('System', `POI refined to precise location (buffered): ${poi.name}`);
+    }
+
+    function showDynamicPOI(poi){
+      if(!poi || poi._visible) return;
+      try{ dynamicLayerGroup.addLayer(poi.layer); poi._visible = true; }catch(e){}
+    }
+    function hideDynamicPOI(poi){
+      if(!poi || !poi._visible) return;
+      try{ dynamicLayerGroup.removeLayer(poi.layer); poi._visible = false; }catch(e){}
     }
 
     // Parse chat text for coordinate patterns and directional instructions.
@@ -991,12 +1802,102 @@
       }
     }
 
+    function getPOIColor(tags){
+      try{
+        if(!tags) return '#2b9348';
+        const amenity = (tags.amenity||'').toLowerCase();
+        const tourism = (tags.tourism||'').toLowerCase();
+        const shop = (tags.shop||'').toLowerCase();
+        const aeroway = (tags.aeroway||'').toLowerCase();
+        if(['hotel','hostel','motel','guest_house'].includes(tourism) || tourism==='hotel') return '#6a4c93'; // purple for lodging
+        if(['restaurant','cafe','bar','fast_food','food_court'].includes(amenity)) return '#ff66a3'; // pink for food
+        if(shop) return '#1e90ff'; // blue for shops/retail
+        if(aeroway && (aeroway.includes('aerodrome') || aeroway.includes('airport') || aeroway.includes('aeroway'))) return '#ff4d4d'; // red for airports/airways
+        // default: green
+        return '#2b9348';
+      }catch(e){ return '#2b9348'; }
+    }
+
+    function isSkippableOSMTag(tags){
+      if(!tags) return false;
+      const aeroway = (tags.aeroway||'').toLowerCase();
+      if(['holding_position','navigationaid','gate','windsock','threshold'].includes(aeroway)) return true;
+      // other skippable checks can be added
+      return false;
+    }
+
     // Hook into existing log of NPC/interpreter responses by wrapping log function
-    const originalLog = log;
+    // Parse a special action block that the AI can include to instruct the client to apply game events.
+    // Usage in AI reply: include a block like <TS_ACTION>{"completeObjective":"Check-in conversation at the hotel","discoverPOI": {"name":"Hotel Barajas Plaza"}}</TS_ACTION>
+    function parseAIActionFromText(text){
+      try{
+        const m = text.match(/<TS_ACTION>([\s\S]*?)<\/TS_ACTION>/i);
+        if(!m) return null;
+        const json = m[1].trim();
+        return JSON.parse(json);
+      }catch(e){ console.warn('Failed parse TS_ACTION', e); return null; }
+    }
+
+    async function applyAIAction(action){
+      if(!action) return;
+      try{
+        if(action.completeObjective){ markObjective(action.completeObjective); log('System', `Objective completed: ${action.completeObjective}`); }
+        if(action.discoverPOI){
+          const q = action.discoverPOI;
+          // Use the centralized helper which performs normalized token-matching and creation
+          await discoverPOIByName({ name: q.name, lat: q.lat, lon: q.lon, description: q.description, tags: q.tags });
+        }
+        if(action.unlockPOI){
+          const name = action.unlockPOI.name || action.unlockPOI;
+          const poi = dynamicPOIs.find(d => d.name === name);
+          if(poi){ poi._unlocked = true; poi._discovered = true; showDynamicPOI(poi); log('System', `POI unlocked: ${poi.name}`); }
+        }
+      }catch(e){ console.warn('applyAIAction error', e); }
+    }
+
+    // Discover or create a POI by name (optionally with coordinates). Exposed for console or AI server helpers.
+    function discoverPOIByName({name, lat, lon, description, tags} = {}){
+      if(!name) return null;
+      const norm = stripDiacritics(name).replace(/[\s\-]+/g,' ').trim().toLowerCase();
+      const qTokens = norm.split(/\s+/).filter(Boolean);
+      function tokensOf(s){ return stripDiacritics((s||'')).replace(/[\s\-]+/g,' ').trim().toLowerCase().split(/\s+/).filter(Boolean); }
+      let poi = dynamicPOIs.find(d => stripDiacritics((d.name||'')).replace(/[\s\-]+/g,' ').trim().toLowerCase() === norm);
+      if(!poi){
+        poi = dynamicPOIs.find(d => {
+          const candTokens = tokensOf(d.name || '');
+          if(!candTokens.length) return false;
+          return qTokens.every(t => candTokens.includes(t));
+        });
+      }
+      if(!poi && qTokens.length === 1){
+        const single = qTokens[0];
+        poi = dynamicPOIs.find(d => tokensOf(d.name||'').some(t => t === single));
+      }
+      // If still not found, create a POI at provided coords or approximate at player location
+      if(!poi){
+        const latEl = (lat != null && lon != null) ? lat : playerLatLng.lat;
+        const lonEl = (lat != null && lon != null) ? lon : playerLatLng.lng;
+        const conf = (lat != null && lon != null) ? 'precise' : 'approx';
+        poi = addDynamicPOI({name, lat: latEl, lon: lonEl, description: description||'Discovered by name', confidence: conf, tags: tags||null});
+      }
+      if(poi){ poi._discovered = true; poi._unlocked = true; showDynamicPOI(poi); log('System', `POI discovered/unlocked: ${poi.name}`); }
+      return poi;
+    }
+
+    // expose for console / external callers
+    window.discoverPOIByName = discoverPOIByName;
+
     log = function(role, text){
+      // Preserve original visible log (for debug and fallback views)
       originalLog(role, text);
+      // Also add to the active thread (selected tab). System messages always go to the active thread as well.
+      const targetPoi = nearbyTabState.selectedId || null;
+      addMessageToThread(role, text, targetPoi);
+      // Process OSM/AI actions only for NPC/Interpreter/System messages
       if(role==='NPC' || role==='Interpreter' || /system/i.test(role)){
         processChatForPOI(text);
+        const action = parseAIActionFromText(text);
+        if(action) applyAIAction(action);
       }
     };
 

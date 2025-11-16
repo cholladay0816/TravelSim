@@ -28,7 +28,7 @@ if(!API_KEY){
 app.post('/api/chat', async (req, res) => {
   try {
     if(!API_KEY) return res.status(500).json({ error: 'Missing OPENAI_API_KEY' });
-    const { messages = [], model = 'gpt-4o-mini', temperature = 0.7, max_tokens = 300 } = req.body;
+    const { messages = [], model = 'gpt-4o-mini', temperature = 0.4, max_tokens = 600 } = req.body;
     const resp = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
