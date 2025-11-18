@@ -11,8 +11,29 @@ import rateLimit from 'express-rate-limit';
 
 dotenv.config();
 const app = express();
-// Basic security headers
+// Basic security headers with explicit CSP and COOP so external CDNs used by index.html
+// are allowed while still providing sane defaults. Serving over HTTPS is recommended
+// so Cross-Origin-Opener-Policy is fully honored by browsers.
+// See: https://helmetjs.github.io/ and https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy
 app.use(helmet());
+
+// Content Security Policy: allow the common CDNs and OpenAI API used by the app.
+app.use(helmet.contentSecurityPolicy({
+  directives: {
+    defaultSrc: ["'self'"],
+    scriptSrc: ["'self'", 'https://unpkg.com', 'https://cdn.jsdelivr.net', 'https://cdnjs.cloudflare.com'],
+    styleSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net', 'https://unpkg.com', 'https://fonts.googleapis.com'],
+    connectSrc: ["'self'", 'https://api.openai.com'],
+    imgSrc: ["'self'", 'data:', 'blob:'],
+    fontSrc: ["'self'", 'https://fonts.gstatic.com', 'https://cdn.jsdelivr.net'],
+    objectSrc: ["'none'"],
+    baseUri: ["'self'"],
+    frameAncestors: ["'none'"]
+  }
+}));
+
+// Cross-Origin-Opener-Policy. This is ignored on insecure origins — serve via HTTPS in prod.
+app.use(helmet.crossOriginOpenerPolicy({ policy: 'same-origin-allow-popups' }));
 
 app.use(express.json({ limit: '1mb' }));
 
