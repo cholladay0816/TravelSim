@@ -15,43 +15,18 @@ const app = express();
 // are allowed while still providing sane defaults. Serving over HTTPS is recommended
 // so Cross-Origin-Opener-Policy is fully honored by browsers.
 // See: https://helmetjs.github.io/ and https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy
-app.use(helmet());
 
-// Content Security Policy: allow the common CDNs and OpenAI API used by the app.
-app.use(helmet.contentSecurityPolicy({
-  directives: {
-    defaultSrc: ["'self'"],
-    scriptSrc: ["'self'", 'https://unpkg.com', 'https://cdn.jsdelivr.net', 'https://cdnjs.cloudflare.com'],
-    styleSrc: ["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net', 'https://unpkg.com', 'https://fonts.googleapis.com'],
-    connectSrc: ["'self'", 'https://api.openai.com'],
-    imgSrc: ["'self'", 'data:', 'blob:'],
-    fontSrc: ["'self'", 'https://fonts.gstatic.com', 'https://cdn.jsdelivr.net'],
-    objectSrc: ["'none'"],
-    baseUri: ["'self'"],
-    frameAncestors: ["'none'"]
-  }
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginOpenerPolicy: false,
+  crossOriginEmbedderPolicy: false
 }));
-
-// Cross-Origin-Opener-Policy. This is ignored on insecure origins — serve via HTTPS in prod.
-app.use(helmet.crossOriginOpenerPolicy({ policy: 'same-origin-allow-popups' }));
 
 app.use(express.json({ limit: '1mb' }));
 
-// CORS handling: allow explicit ALLOWED_ORIGINS (comma-separated) or fallback to echoing Origin
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
+// CORS handling: allow any origin (use only for HTTP/testing)
 app.use((req, res, next) => {
-  const origin = req.get('Origin');
-  if (!origin) {
-    // no Origin header (curl, same-origin requests) — allow
-    res.setHeader('Access-Control-Allow-Origin', '*');
-  } else if (ALLOWED_ORIGINS.length === 0) {
-    // no explicit allow list: echo the origin (safe for simple deployments)
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  } else if (ALLOWED_ORIGINS.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  } else {
-    return res.status(403).json({ error: 'Forbidden origin' });
-  }
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
