@@ -272,6 +272,14 @@
               <button id="resetBtn" class="secondary btn btn-sm">Reset</button>
               <button id="cancelRouteBtn" class="secondary btn btn-sm" title="Cancel active route">Cancel Route</button>
             </div>
+              <!-- Master audio volume (TTS) -->
+              <div class="d-flex align-items-center gap-2 mt-2">
+                <label style="font-size:.75rem; display:flex; align-items:center; gap:8px;">
+                  <i class="bi bi-volume-up-fill" aria-hidden="true"></i>
+                  <input id="masterVolume" type="range" min="0" max="100" value="0" aria-label="Master volume" />
+                </label>
+                <button id="volumeMuteBtn" class="secondary btn btn-sm" title="Mute/unmute audio">Muted</button>
+              </div>
           </div>
         </div>
       </div>
@@ -655,6 +663,65 @@
         lastResetTs = Date.now();
         log('System', `Nearby conversation reset (${reason}).`);
         lastContextAnchor = L.latLng(playerLatLng.lat, playerLatLng.lng);
+    }
+
+    /*****************************************************
+     * TEXT-TO-SPEECH (Master volume + Web Speech API)
+     *
+     * Requirements:
+     * - Default volume 0% and muted
+     * - Slider increases master volume for the tab (0-100)
+     * - Only speak NPC and Interpreter roles, not System or translation
+     *****************************************************/
+    const VOLUME_KEY = 'ts_master_volume';
+    const MUTE_KEY = 'ts_master_muted';
+    const elVolume = document.getElementById('masterVolume');
+    const elMuteBtn = document.getElementById('volumeMuteBtn');
+    // initialize from localStorage (default: 0 and muted)
+  let masterVolume = Number(localStorage.getItem(VOLUME_KEY));
+  if(isNaN(masterVolume)) masterVolume = 0;
+  let masterMuted = localStorage.getItem(MUTE_KEY) === '1' || masterVolume === 0;
+  if(elVolume){ elVolume.value = String(masterVolume); }
+  if(elMuteBtn){ elMuteBtn.textContent = masterMuted ? 'Muted' : 'Unmuted'; }
+
+    function setMasterVolume(v){
+      masterVolume = Math.max(0, Math.min(100, Number(v) || 0));
+      localStorage.setItem(VOLUME_KEY, String(masterVolume));
+      if(elVolume) elVolume.value = String(masterVolume);
+      if(masterVolume === 0){
+        masterMuted = true;
+        localStorage.setItem(MUTE_KEY, '1');
+        if(elMuteBtn) elMuteBtn.textContent = 'Muted';
+      } else {
+        // Do not auto-unmute when user raises volume; only update persisted mute flag so UI reflects explicit mute state
+        localStorage.setItem(MUTE_KEY, masterMuted ? '1' : '0');
+      }
+    }
+
+    if(elVolume){ elVolume.addEventListener('input', (e) => {
+      const v = e.target.value; setMasterVolume(v);
+      // If user slides above 0, unmute visually but preserve explicit mute until toggle
+      if(Number(v) > 0 && masterMuted){ elMuteBtn.textContent = 'Muted'; }
+    }); }
+    if(elMuteBtn){ elMuteBtn.addEventListener('click', () => { masterMuted = !masterMuted; localStorage.setItem(MUTE_KEY, masterMuted ? '1' : '0'); elMuteBtn.textContent = masterMuted ? 'Muted' : 'Unmuted'; }); }
+
+    // Web Speech API wrapper
+    function speakText(text, lang){
+      try{
+        if(!text || typeof window === 'undefined') return;
+        if(masterMuted || Number(masterVolume) <= 0) return; // don't speak when muted or volume 0
+        // Prefer SpeechSynthesis if available
+        const synth = window.speechSynthesis;
+        if(!synth) return;
+        // Build utterance
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.lang = lang || LOCALE.targetLangISO || 'es';
+        // Map 0..100 to 0.0..1.0
+        utter.volume = Math.max(0, Math.min(1, Number(masterVolume) / 100));
+        // Optionally tweak rate/pitch for more natural playback per language
+        utter.rate = 1.0;
+        synth.speak(utter);
+      }catch(e){ console.warn('TTS speak failed', e); }
     }
 
     /*****************************************************
@@ -1872,6 +1939,7 @@ Return strictly the JSON array; no commentary.`;
         // Defensive: exclude benches (amenity=bench|tower) explicitly even if they slip through the query
         if((tags.amenity || '').toString().toLowerCase() === 'bench') return;
         if((tags.amenity || '').toString().toLowerCase() === 'tower') return;
+        if((tags.amenity || '').toString().toLowerCase() === 'parking_position') return;
         const kind = (tags.amenity || tags.tourism || tags.shop || tags.aeroway || '').toLowerCase();
         const name = tags.name || tags['name:en'] || `OSM ${kind || el.type}`;
         // skip skippable OSM features entirely (navigation aids, gates, holding positions)
@@ -2665,6 +2733,18 @@ Formatting rules:
       const targetPoi = nearbyTabState.selectedId || null;
       addMessageToThread(role, text, targetPoi);
       // Process OSM/AI actions only for NPC/Interpreter/System messages
+      // Speak NPC and Interpreter messages (but not System). Also process actions for NPC/Interpreter/System.
+      try{
+        const roleKey = (role||'').toString().toLowerCase();
+        if(roleKey === 'npc'){
+          // NPCs usually speak the target language
+          speakText(text, LOCALE.targetLangISO);
+        } else if(roleKey === 'interpreter'){
+          // Interpreter speaks in the base language
+          //speakText(text, LOCALE.baseLangISO);
+        }
+      }catch(e){ console.warn('TTS invocation error', e); }
+
       if(role==='NPC' || role==='Interpreter' || /system/i.test(role)){
         processChatForPOI(text);
         const action = parseAIActionFromText(text);
